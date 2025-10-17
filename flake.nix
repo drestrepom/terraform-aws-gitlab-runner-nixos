@@ -33,5 +33,15 @@
           ];
         };
       });
+
+      # Hello World package
+      packages = forEachSupportedSystem ({ pkgs }: {
+        hello-world = pkgs.writeShellScriptBin "hello-world" ''
+          echo "Hello World from NixOS GitLab Runner!"
+          echo "System: $(uname -a)"
+          echo "Nix version: $(nix --version)"
+          echo "Current time: $(date)"
+        '';
+      });
     };
 }

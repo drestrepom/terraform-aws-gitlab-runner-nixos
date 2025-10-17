@@ -1,0 +1,7 @@
+.envrc
+infra/terraform.tfstate
+infra/.terraform
+infra/nix_builder_key
+.direnv
+.envrc
+.env

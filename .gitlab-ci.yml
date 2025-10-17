@@ -1,0 +1,29 @@
+# GitLab CI configuration for NixOS Flake
+stages:
+  - test
+
+# Test the hello-world package (builds if needed)
+test-hello-world:
+  stage: test
+  tags:
+    - nixos
+    - arm64
+    - shell
+  script:
+    - echo "🧪 Testing hello-world package..."
+    - echo "🏃 Running hello-world (builds if needed):"
+    - nix develop --command nix run .#hello-world --extra-experimental-features 'nix-command flakes'
+    - echo "✅ Test completed successfully!"
+
+# Show flake information
+show-flake:
+  stage: test
+  tags:
+    - nixos
+    - arm64
+    - shell
+  script:
+    - echo "📋 Flake information:"
+    - nix develop --command nix flake show --extra-experimental-features 'nix-command flakes'
+    - echo "🔍 Available packages (aarch64-linux):"
+    - nix develop --command nix flake show --json --extra-experimental-features 'nix-command flakes' | jq '.packages."aarch64-linux"'
