@@ -45,7 +45,7 @@
   environment.etc."gitlab-runner-authentication.env" = {
     text = ''
       CI_SERVER_URL=https://gitlab.com
-      CI_SERVER_TOKEN=__GITLAB_RUNNER_TOKEN__
+      CI_SERVER_TOKEN=${gitlab_runner_token}
     '';
     mode = "0400";
     user = "gitlab-runner";
@@ -68,7 +68,7 @@
     isNormalUser = true;
     extraGroups = [ "wheel" ];
     shell = pkgs.bashInteractive;
-    openssh.authorizedKeys.keys = [ (builtins.readFile ./nix_builder_key.pub) ];
+    openssh.authorizedKeys.keys = [ "${nix_builder_authorized_key}" ];
   };
 
   fileSystems."/" = {

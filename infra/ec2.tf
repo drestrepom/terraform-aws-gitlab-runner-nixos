@@ -20,8 +20,6 @@ resource "aws_key_pair" "nixos_instance" {
   }
 }
 
-
-
 # Discover latest NixOS arm64 AMI (owner: 427812963091)
 data "aws_ami" "nixos_arm64" {
   owners      = ["427812963091"]
@@ -76,92 +74,33 @@ resource "aws_security_group" "nixos_instance" {
   }
 }
 
-locals {
-  nixos_cloud_init = <<EOF
-#!/usr/bin/env bash
-exec > >(tee -a /dev/console) 2>&1
-set -euxo pipefail
+# La instancia individual se reemplaza por el Auto Scaling Group
+# Ver archivo autoscaling.tf para la configuración completa
 
-echo "=== NixOS GitLab Runner Auto-Configuration ==="
-echo "Starting at: $(date)"
-
-# Wait for network to be ready
-echo "Waiting for network..."
-sleep 10
-
-# Update system first
-echo "Updating system packages..."
-nix-channel --update || true
-
-mkdir -p /etc/nixos
-
-# Write NixOS configuration with placeholder
-echo "Writing NixOS configuration..."
-cat > /etc/nixos/configuration.nix <<'NIXCONF'
-${file("${path.module}/nixos-runner-config.nix")}
-NIXCONF
-
-# Replace placeholder with actual GitLab runner token
-echo "Configuring GitLab runner token..."
-sed -i 's|__GITLAB_RUNNER_TOKEN__|${gitlab_user_runner.nixos_runner.token}|g' /etc/nixos/configuration.nix
-
-# Write public key for authorized_keys in Nix config
-echo "Setting up SSH keys..."
-cat > /etc/nixos/nix_builder_key.pub <<'PUBKEY'
-${chomp(coalesce(var.nix_builder_authorized_key, file("${path.module}/nix_builder_key.pub")))}
-PUBKEY
-chmod 0644 /etc/nixos/nix_builder_key.pub
-
-# Apply configuration with retries
-echo "Applying NixOS configuration..."
-for i in {1..3}; do
-  echo "Attempt $i/3: Applying configuration..."
-  if nixos-rebuild switch --show-trace; then
-    echo "Configuration applied successfully!"
-    break
-  else
-    echo "Configuration failed, retrying in 30 seconds..."
-    sleep 30
-  fi
-done
-EOF
+# Auto Scaling Group outputs
+output "autoscaling_group_name" {
+  value       = aws_autoscaling_group.nixos_runners.name
+  description = "Name of the Auto Scaling Group"
 }
 
-resource "aws_instance" "nixos_instance" {
-  ami                         = data.aws_ami.nixos_arm64.id
-  instance_type               = var.nix_builder_instance_type
-  subnet_id                   = aws_subnet.public[0].id
-  vpc_security_group_ids      = [aws_security_group.nixos_instance.id]
-  associate_public_ip_address = var.nix_builder_enable_public_ip
-  key_name                    = aws_key_pair.nixos_instance.key_name
-
-  user_data = local.nixos_cloud_init
-
-  root_block_device {
-    volume_size = var.nix_builder_disk_size
-    volume_type = "gp3"
-  }
-
-  tags = {
-    Name                 = "nixos-ci-instance"
-    "comp" = "nixos-ci"
-    "line" = "cost"
-  }
+output "autoscaling_group_arn" {
+  value       = aws_autoscaling_group.nixos_runners.arn
+  description = "ARN of the Auto Scaling Group"
 }
 
-output "nixos_instance_public_ip" {
-  value       = aws_instance.nixos_instance.public_ip
-  description = "Public IP for the NixOS instance (if enabled)"
+output "launch_template_id" {
+  value       = aws_launch_template.nixos_runner.id
+  description = "ID of the Launch Template"
 }
 
-output "nixos_instance_private_ip" {
-  value       = aws_instance.nixos_instance.private_ip
-  description = "Private IP for the NixOS instance"
+output "current_instances_count" {
+  value       = "Use 'aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names $(terraform output -raw autoscaling_group_name) --query \"AutoScalingGroups[0].Instances[?LifecycleState=='InService'] | length(@)\"' to get current count"
+  description = "Command to get current number of instances in the ASG"
 }
 
-output "nixos_instance_ssh_command" {
-  value       = "ssh -i infra/nix_builder_key root@${aws_instance.nixos_instance.public_ip}"
-  description = "SSH command to connect to the NixOS instance"
+output "desired_capacity" {
+  value       = aws_autoscaling_group.nixos_runners.desired_capacity
+  description = "Desired capacity of the ASG"
 }
 
 # GitLab Runner outputs

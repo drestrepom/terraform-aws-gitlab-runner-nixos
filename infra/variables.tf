@@ -45,6 +45,43 @@ variable "nix_builder_enable_public_ip" {
   default     = true
 }
 
+# Auto Scaling Group Configuration
+variable "min_size" {
+  description = "Minimum number of instances in the Auto Scaling Group"
+  type        = number
+  default     = 3
+}
+
+variable "max_size" {
+  description = "Maximum number of instances in the Auto Scaling Group"
+  type        = number
+  default     = 10
+}
+
+variable "desired_capacity" {
+  description = "Desired number of instances in the Auto Scaling Group"
+  type        = number
+  default     = 1
+}
+
+variable "spot_price" {
+  description = "Maximum price for spot instances (leave empty for on-demand price)"
+  type        = string
+  default     = ""
+}
+
+variable "health_check_grace_period" {
+  description = "Time after instance launch before health checks begin"
+  type        = number
+  default     = 300
+}
+
+variable "health_check_type" {
+  description = "Type of health check to perform"
+  type        = string
+  default     = "EC2"
+}
+
 variable "nix_builder_authorized_key" {
   description = "Public key for SSH access to the Nix builder (optional, will use nix_builder_key.pub if not provided)"
   type        = string
