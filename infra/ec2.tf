@@ -1,3 +1,13 @@
+# Create GitLab Runner
+resource "gitlab_user_runner" "nixos_runner" {
+  runner_type = "project_type"
+  project_id  = var.gitlab_project_id
+
+  description = var.gitlab_runner_description
+  tag_list    = var.gitlab_runner_tags
+  untagged    = var.gitlab_runner_untagged
+}
+
 # Create AWS Key Pair for NixOS instance
 resource "aws_key_pair" "nixos_instance" {
   key_name   = "nixos-ci-instance"
@@ -72,21 +82,48 @@ locals {
 exec > >(tee -a /dev/console) 2>&1
 set -euxo pipefail
 
+echo "=== NixOS GitLab Runner Auto-Configuration ==="
+echo "Starting at: $(date)"
+
+# Wait for network to be ready
+echo "Waiting for network..."
+sleep 10
+
+# Update system first
+echo "Updating system packages..."
+nix-channel --update || true
+
 mkdir -p /etc/nixos
 
-# Write NixOS configuration
+# Write NixOS configuration with placeholder
+echo "Writing NixOS configuration..."
 cat > /etc/nixos/configuration.nix <<'NIXCONF'
-${file("${path.module}/nixos-builder-config.nix")}
+${file("${path.module}/nixos-runner-config.nix")}
 NIXCONF
 
+# Replace placeholder with actual GitLab runner token
+echo "Configuring GitLab runner token..."
+sed -i 's|__GITLAB_RUNNER_TOKEN__|${gitlab_user_runner.nixos_runner.token}|g' /etc/nixos/configuration.nix
+
 # Write public key for authorized_keys in Nix config
+echo "Setting up SSH keys..."
 cat > /etc/nixos/nix_builder_key.pub <<'PUBKEY'
 ${chomp(coalesce(var.nix_builder_authorized_key, file("${path.module}/nix_builder_key.pub")))}
 PUBKEY
 chmod 0644 /etc/nixos/nix_builder_key.pub
 
-# Apply configuration (no -L flag for compatibility)
-nixos-rebuild switch || true
+# Apply configuration with retries
+echo "Applying NixOS configuration..."
+for i in {1..3}; do
+  echo "Attempt $i/3: Applying configuration..."
+  if nixos-rebuild switch --show-trace; then
+    echo "Configuration applied successfully!"
+    break
+  else
+    echo "Configuration failed, retrying in 30 seconds..."
+    sleep 30
+  fi
+done
 EOF
 }
 
@@ -123,7 +160,24 @@ output "nixos_instance_private_ip" {
 }
 
 output "nixos_instance_ssh_command" {
-  value       = "ssh -i infra/nix_builder_key nixos@${aws_instance.nixos_instance.public_ip}"
+  value       = "ssh -i infra/nix_builder_key root@${aws_instance.nixos_instance.public_ip}"
   description = "SSH command to connect to the NixOS instance"
+}
+
+# GitLab Runner outputs
+output "gitlab_runner_id" {
+  value       = gitlab_user_runner.nixos_runner.id
+  description = "GitLab Runner ID"
+}
+
+output "gitlab_runner_token" {
+  value       = gitlab_user_runner.nixos_runner.token
+  description = "GitLab Runner authentication token"
+  sensitive   = true
+}
+
+output "gitlab_runner_runner_type" {
+  value       = gitlab_user_runner.nixos_runner.runner_type
+  description = "GitLab Runner type"
 }
 

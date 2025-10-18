@@ -28,7 +28,7 @@ variable "region" {
 }
 
 variable "nix_builder_instance_type" {
-  description = "EC2 instance type for the Nix builder"
+  description = "EC2 instance type for the Nix builder (smallest available ARM64 for testing)"
   type        = string
   default     = "t4g.medium"
 }
@@ -60,5 +60,42 @@ variable "nix_builder_ssh_cidr_blocks" {
 variable "admin_ip" {
   description = "Your public IP address for SSH access"
   type        = string
-  default     = "104.30.134.27/32"
+  default     = "0.0.0.0/0"
+}
+
+# GitLab Configuration
+variable "gitlab_token" {
+  description = "GitLab Personal Access Token with 'create_runner' scope"
+  type        = string
+  sensitive   = true
+}
+
+variable "gitlab_url" {
+  description = "GitLab URL"
+  type        = string
+  default     = "https://gitlab.com"
+}
+
+variable "gitlab_project_id" {
+  description = "GitLab Project ID where the runner will be created"
+  type        = number
+}
+
+# GitLab Runner Configuration
+variable "gitlab_runner_description" {
+  description = "Description for the GitLab runner"
+  type        = string
+  default     = "NixOS ARM64 Shell Runner"
+}
+
+variable "gitlab_runner_tags" {
+  description = "Tags for the GitLab runner"
+  type        = list(string)
+  default     = ["nixos", "arm64", "shell"]
+}
+
+variable "gitlab_runner_untagged" {
+  description = "Whether the runner should run untagged jobs"
+  type        = bool
+  default     = true
 }

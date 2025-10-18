@@ -33,20 +33,24 @@
 
     services = {
       "nixos-shell-runner" = {
-        registrationConfigFile = "/etc/gitlab-runner-registration.env";
+        authenticationTokenConfigFile = "/etc/gitlab-runner-authentication.env";
         executor = "shell";
-        tagList = [ "nixos" "arm64" "shell" ];
-        runUntagged = false;
-        registrationFlags = [ "--tag-list nixos,arm64,shell" ];
       };
     };
     extraPackages = with pkgs; [ git curl wget ];
   };
 
-  environment.etc."gitlab-runner-registration.env".text = ''
-    CI_SERVER_URL=https://gitlab.com
-    REGISTRATION_TOKEN=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-  '';
+  # El archivo de autenticación se creará durante el bootstrap
+  # con el token generado desde la API de GitLab
+  environment.etc."gitlab-runner-authentication.env" = {
+    text = ''
+      CI_SERVER_URL=https://gitlab.com
+      CI_SERVER_TOKEN=__GITLAB_RUNNER_TOKEN__
+    '';
+    mode = "0400";
+    user = "gitlab-runner";
+    group = "gitlab-runner";
+  };
 
   # Enable SSH service
   services.openssh = {
@@ -64,7 +68,7 @@
     isNormalUser = true;
     extraGroups = [ "wheel" ];
     shell = pkgs.bashInteractive;
-    openssh.authorizedKeys.keys = [ (builtins.readFile "/etc/nixos/nix_builder_key.pub") ];
+    openssh.authorizedKeys.keys = [ (builtins.readFile ./nix_builder_key.pub) ];
   };
 
   fileSystems."/" = {
