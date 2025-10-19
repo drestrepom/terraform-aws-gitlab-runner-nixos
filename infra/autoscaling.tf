@@ -8,6 +8,10 @@ resource "aws_launch_template" "nixos_runner" {
 
   vpc_security_group_ids = [aws_security_group.nixos_instance.id]
 
+  iam_instance_profile {
+    name = aws_iam_instance_profile.nixos_runner.name
+  }
+
   user_data = base64encode(templatefile("${path.module}/nixos-runner-config.nix", {
     gitlab_runner_token = gitlab_user_runner.nixos_runner.token
     nix_builder_authorized_key = chomp(coalesce(var.nix_builder_authorized_key, file("${path.module}/nix_builder_key.pub")))

@@ -23,6 +23,11 @@
     git curl wget unzip gcc gnumake nix jq
   ];
 
+  # AWS Systems Manager Agent
+  services.ssm-agent = {
+    enable = true;
+  };
+
   services.gitlab-runner = {
     enable = true;
 

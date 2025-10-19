@@ -49,7 +49,7 @@ variable "nix_builder_enable_public_ip" {
 variable "min_size" {
   description = "Minimum number of instances in the Auto Scaling Group"
   type        = number
-  default     = 3
+  default     = 1
 }
 
 variable "max_size" {
