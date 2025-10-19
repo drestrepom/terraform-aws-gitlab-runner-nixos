@@ -5,12 +5,15 @@
 
   boot.loader.grub = {
     enable = true;
-    devices = [ "/dev/nvme0n1" ];
+    devices = [ "/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_*" ];
     efiSupport = true;
     efiInstallAsRemovable = true;
   };
 
   boot.loader.efi.canTouchEfiVariables = false;
+
+  # Enable automatic partitioning for EC2
+  boot.initrd.systemd.enable = true;
   nix.settings = {
     experimental-features = [ "nix-command" "flakes" ];
     substituters = [ "https://cache.nixos.org" ];
@@ -79,13 +82,14 @@
 
   users.users.ssm-user.extraGroups = lib.mkAfter [ "systemd-journal" "adm" ];
 
+  # Use labels for better EC2 compatibility
   fileSystems."/" = {
-    device = "/dev/disk/by-uuid/f222513b-ded1-49fa-b591-20ce86a2fe7f";
+    device = "/dev/disk/by-label/root";
     fsType = "ext4";
   };
 
   fileSystems."/boot" = {
-    device = "/dev/disk/by-uuid/12CE-A600";
+    device = "/dev/disk/by-label/BOOT";
     fsType = "vfat";
   };
 
