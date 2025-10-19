@@ -12,9 +12,10 @@ resource "aws_launch_template" "nixos_runner" {
     name = aws_iam_instance_profile.nixos_runner.name
   }
 
-  user_data = base64encode(templatefile("${path.module}/nixos-runner-config.nix", {
-    gitlab_runner_token = gitlab_user_runner.nixos_runner.token
-  }))
+  user_data = base64encode(replace(file("${path.module}/nixos-runner-config.nix"),
+    "__GITLAB_RUNNER_TOKEN__",
+    gitlab_user_runner.nixos_runner.token
+  ))
 
   block_device_mappings {
     device_name = "/dev/xvda"

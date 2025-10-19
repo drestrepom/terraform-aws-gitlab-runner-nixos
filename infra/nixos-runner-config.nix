@@ -1,9 +1,7 @@
 { config, pkgs, lib, modulesPath, ... }:
 
 {
-  imports = [
-    (modulesPath + "/profiles/qemu-guest.nix")
-  ];
+  imports = [ (modulesPath + "/profiles/qemu-guest.nix") ];
 
   boot.loader.grub = {
     enable = true;
@@ -16,17 +14,23 @@
   nix.settings = {
     experimental-features = [ "nix-command" "flakes" ];
     substituters = [ "https://cache.nixos.org" ];
-    trusted-public-keys = [ "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=" ];
+    trusted-public-keys =
+      [ "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=" ];
   };
 
   environment.systemPackages = with pkgs; [
-    git curl wget unzip gcc gnumake nix jq
+    git
+    curl
+    wget
+    unzip
+    gcc
+    gnumake
+    nix
+    jq
   ];
 
   # AWS Systems Manager Agent
-  services.ssm-agent = {
-    enable = true;
-  };
+  services.ssm-agent = { enable = true; };
 
   services.gitlab-runner = {
     enable = true;
@@ -45,12 +49,10 @@
     extraPackages = with pkgs; [ git curl wget ];
   };
 
-  # El archivo de autenticación se creará durante el bootstrap
-  # con el token generado desde la API de GitLab
   environment.etc."gitlab-runner-authentication.env" = {
     text = ''
       CI_SERVER_URL=https://gitlab.com
-      CI_SERVER_TOKEN=${gitlab_runner_token}
+      CI_SERVER_TOKEN=__GITLAB_RUNNER_TOKEN__
     '';
     mode = "0400";
     user = "gitlab-runner";
@@ -67,30 +69,15 @@
     shell = pkgs.bashInteractive;
   };
 
-  # Configure ssm-user for Systems Manager sessions
-  users.users.ssm-user = {
-    isSystemUser = true;
-    group = "ssm-user";
-    extraGroups = [ "wheel" "systemd-journal" "adm" ];
-    shell = pkgs.bashInteractive;
-    createHome = true;
-    home = "/home/ssm-user";
-  };
+  security.sudo.extraRules = [{
+    users = [ "ssm-user" ];
+    commands = [{
+      command = "ALL";
+      options = [ "NOPASSWD" ];
+    }];
+  }];
 
-  users.groups.ssm-user = {};
-
-  # Give ssm-user sudo privileges without password
-  security.sudo.extraRules = [
-    {
-      users = [ "ssm-user" ];
-      commands = [
-        {
-          command = "ALL";
-          options = [ "NOPASSWD" ];
-        }
-      ];
-    }
-  ];
+  users.users.ssm-user.extraGroups = lib.mkAfter [ "systemd-journal" "adm" ];
 
   fileSystems."/" = {
     device = "/dev/disk/by-uuid/f222513b-ded1-49fa-b591-20ce86a2fe7f";

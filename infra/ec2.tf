@@ -189,3 +189,8 @@ output "gitlab_runner_runner_type" {
   description = "GitLab Runner type"
 }
 
+output "gitlab_project_id" {
+  value       = var.gitlab_project_id
+  description = "GitLab Project ID where the runner is registered"
+}
+
