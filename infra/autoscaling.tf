@@ -113,52 +113,82 @@ resource "aws_autoscaling_group" "nixos_runners" {
   }
 }
 
-# Auto Scaling Group scaling policies
-resource "aws_autoscaling_policy" "scale_up" {
-  name                   = "nixos-runners-scale-up"
+# Auto Scaling Group scaling policies based on GitLab jobs
+resource "aws_autoscaling_policy" "scale_up_jobs" {
+  name                   = "nixos-runners-scale-up-jobs"
+  scaling_adjustment     = 1
+  adjustment_type        = "ChangeInCapacity"
+  cooldown               = 60  # Shorter cooldown for job-based scaling
+  autoscaling_group_name = aws_autoscaling_group.nixos_runners.name
+}
+
+resource "aws_autoscaling_policy" "scale_down_jobs" {
+  name                   = "nixos-runners-scale-down-jobs"
+  scaling_adjustment     = -1
+  adjustment_type        = "ChangeInCapacity"
+  cooldown               = 300  # Longer cooldown for scale down
+  autoscaling_group_name = aws_autoscaling_group.nixos_runners.name
+}
+
+# CloudWatch alarms based on GitLab job metrics
+resource "aws_cloudwatch_metric_alarm" "high_pending_jobs" {
+  alarm_name          = "nixos-runners-high-pending-jobs"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "2"
+  metric_name         = "PendingJobs"
+  namespace           = "GitLab/CI"
+  period              = "60"
+  statistic           = "Average"
+  threshold           = "2"  # Scale up if more than 2 jobs pending
+  alarm_description   = "Scale up when GitLab has pending jobs"
+  alarm_actions       = [aws_autoscaling_policy.scale_up_jobs.arn]
+
+  dimensions = {
+    ProjectId = var.gitlab_project_id
+  }
+
+  treat_missing_data = "notBreaching"
+}
+
+resource "aws_cloudwatch_metric_alarm" "low_pending_jobs" {
+  alarm_name          = "nixos-runners-low-pending-jobs"
+  comparison_operator = "LessThanThreshold"
+  evaluation_periods  = "3"
+  metric_name         = "TotalActiveJobs"
+  namespace           = "GitLab/CI"
+  period              = "60"
+  statistic           = "Average"
+  threshold           = "1"  # Scale down if less than 1 active job
+  alarm_description   = "Scale down when GitLab has no active jobs"
+  alarm_actions       = [aws_autoscaling_policy.scale_down_jobs.arn]
+
+  dimensions = {
+    ProjectId = var.gitlab_project_id
+  }
+
+  treat_missing_data = "notBreaching"
+}
+
+# Keep CPU-based scaling as backup (with higher thresholds)
+resource "aws_autoscaling_policy" "scale_up_cpu_backup" {
+  name                   = "nixos-runners-scale-up-cpu-backup"
   scaling_adjustment     = 1
   adjustment_type        = "ChangeInCapacity"
   cooldown               = 300
   autoscaling_group_name = aws_autoscaling_group.nixos_runners.name
 }
 
-resource "aws_autoscaling_policy" "scale_down" {
-  name                   = "nixos-runners-scale-down"
-  scaling_adjustment     = -1
-  adjustment_type        = "ChangeInCapacity"
-  cooldown               = 300
-  autoscaling_group_name = aws_autoscaling_group.nixos_runners.name
-}
-
-# CloudWatch alarms for scaling
-resource "aws_cloudwatch_metric_alarm" "high_cpu" {
-  alarm_name          = "nixos-runners-high-cpu"
+resource "aws_cloudwatch_metric_alarm" "high_cpu_backup" {
+  alarm_name          = "nixos-runners-high-cpu-backup"
   comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = "2"
+  evaluation_periods  = "3"
   metric_name         = "CPUUtilization"
   namespace           = "AWS/EC2"
   period              = "300"
   statistic           = "Average"
-  threshold           = "80"
-  alarm_description   = "This metric monitors ec2 cpu utilization"
-  alarm_actions       = [aws_autoscaling_policy.scale_up.arn]
-
-  dimensions = {
-    AutoScalingGroupName = aws_autoscaling_group.nixos_runners.name
-  }
-}
-
-resource "aws_cloudwatch_metric_alarm" "low_cpu" {
-  alarm_name          = "nixos-runners-low-cpu"
-  comparison_operator = "LessThanThreshold"
-  evaluation_periods  = "2"
-  metric_name         = "CPUUtilization"
-  namespace           = "AWS/EC2"
-  period              = "300"
-  statistic           = "Average"
-  threshold           = "20"
-  alarm_description   = "This metric monitors ec2 cpu utilization"
-  alarm_actions       = [aws_autoscaling_policy.scale_down.arn]
+  threshold           = "90"  # Higher threshold as backup
+  alarm_description   = "Backup CPU-based scaling for emergency situations"
+  alarm_actions       = [aws_autoscaling_policy.scale_up_cpu_backup.arn]
 
   dimensions = {
     AutoScalingGroupName = aws_autoscaling_group.nixos_runners.name

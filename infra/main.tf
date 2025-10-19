@@ -10,6 +10,10 @@ terraform {
       source  = "gitlabhq/gitlab"
       version = "~> 17.0"
     }
+    archive = {
+      source  = "hashicorp/archive"
+      version = "~> 2.0"
+    }
   }
 }
 

@@ -160,6 +160,17 @@ output "nat_gateway_ip" {
   description = "Public IP of the NAT Gateway (shared by all runners)"
 }
 
+# Lambda function outputs
+output "lambda_function_name" {
+  value       = aws_lambda_function.gitlab_metrics_collector.function_name
+  description = "Name of the GitLab metrics collector Lambda function"
+}
+
+output "cloudwatch_dashboard_url" {
+  value       = "https://console.aws.amazon.com/cloudwatch/home?region=us-east-1#metricsV2:graph=~();namespace=GitLab%2FCI"
+  description = "URL to view GitLab CI metrics in CloudWatch"
+}
+
 
 # GitLab Runner outputs
 output "gitlab_runner_id" {
