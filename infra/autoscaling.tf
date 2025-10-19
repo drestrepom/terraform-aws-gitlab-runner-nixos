@@ -14,7 +14,6 @@ resource "aws_launch_template" "nixos_runner" {
 
   user_data = base64encode(templatefile("${path.module}/nixos-runner-config.nix", {
     gitlab_runner_token = gitlab_user_runner.nixos_runner.token
-    nix_builder_authorized_key = chomp(coalesce(var.nix_builder_authorized_key, file("${path.module}/nix_builder_key.pub")))
   }))
 
   block_device_mappings {
@@ -56,7 +55,7 @@ resource "aws_launch_template" "nixos_runner" {
 # Auto Scaling Group
 resource "aws_autoscaling_group" "nixos_runners" {
   name                = "nixos-gitlab-runners"
-  vpc_zone_identifier = aws_subnet.public[*].id
+  vpc_zone_identifier = aws_subnet.private[*].id
   target_group_arns   = []
   health_check_type   = var.health_check_type
   health_check_grace_period = var.health_check_grace_period

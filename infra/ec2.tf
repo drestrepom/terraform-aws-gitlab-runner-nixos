@@ -79,38 +79,47 @@ data "aws_ami" "nixos_arm64" {
 }
 
 resource "aws_security_group" "nixos_instance" {
-  name        = "nixos-ci-instance"
-  description = "Security group for NixOS instance"
+  name        = "nixos-ci-runners"
+  description = "Security group for NixOS GitLab runners in private subnets"
   vpc_id      = aws_vpc.main.id
 
-  ingress {
-    description = "Allow SSH from admin IP"
-    from_port   = 22
-    to_port     = 22
+  # No ingress rules needed - runners are in private subnets and use SSM for access
+  
+  # Egress rules - only what's needed for GitLab runners
+  egress {
+    description = "HTTPS to GitLab API"
+    from_port   = 443
+    to_port     = 443
     protocol    = "tcp"
-    cidr_blocks = [var.admin_ip]
-  }
-
-  dynamic "ingress" {
-    for_each = var.nix_builder_ssh_cidr_blocks
-    content {
-      description = "Allow SSH from custom CIDR"
-      from_port   = 22
-      to_port     = 22
-      protocol    = "tcp"
-      cidr_blocks = [ingress.value]
-    }
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
+    description = "HTTP for package downloads"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    description = "DNS"
+    from_port   = 53
+    to_port     = 53
+    protocol    = "udp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    description = "NTP"
+    from_port   = 123
+    to_port     = 123
+    protocol    = "udp"
     cidr_blocks = ["0.0.0.0/0"]
   }
 
   tags = {
-    Name                 = "nixos-ci-instance"
+    Name = "nixos-ci-runners-sg"
     "comp" = "nixos-ci"
     "line" = "cost"
   }
@@ -144,6 +153,13 @@ output "desired_capacity" {
   value       = aws_autoscaling_group.nixos_runners.desired_capacity
   description = "Desired capacity of the ASG"
 }
+
+# NAT Gateway outputs
+output "nat_gateway_ip" {
+  value       = aws_eip.nat.public_ip
+  description = "Public IP of the NAT Gateway (shared by all runners)"
+}
+
 
 # GitLab Runner outputs
 output "gitlab_runner_id" {

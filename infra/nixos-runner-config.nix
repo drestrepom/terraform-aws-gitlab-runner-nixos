@@ -57,24 +57,40 @@
     group = "gitlab-runner";
   };
 
-  # Enable SSH service
-  services.openssh = {
-    enable = true;
-    settings = {
-      PasswordAuthentication = false;
-      KbdInteractiveAuthentication = false;
-    };
-    openFirewall = true;
-    permitRootLogin = "prohibit-password";
-  };
+  # SSH disabled - using SSM Agent for remote access
+  services.openssh.enable = false;
 
-  # Configure nixos user
+  # Configure nixos user (no SSH keys needed)
   users.users.nixos = {
     isNormalUser = true;
-    extraGroups = [ "wheel" ];
+    extraGroups = [ "wheel" "systemd-journal" "adm" ];
     shell = pkgs.bashInteractive;
-    openssh.authorizedKeys.keys = [ "${nix_builder_authorized_key}" ];
   };
+
+  # Configure ssm-user for Systems Manager sessions
+  users.users.ssm-user = {
+    isSystemUser = true;
+    group = "ssm-user";
+    extraGroups = [ "wheel" "systemd-journal" "adm" ];
+    shell = pkgs.bashInteractive;
+    createHome = true;
+    home = "/home/ssm-user";
+  };
+
+  users.groups.ssm-user = {};
+
+  # Give ssm-user sudo privileges without password
+  security.sudo.extraRules = [
+    {
+      users = [ "ssm-user" ];
+      commands = [
+        {
+          command = "ALL";
+          options = [ "NOPASSWD" ];
+        }
+      ];
+    }
+  ];
 
   fileSystems."/" = {
     device = "/dev/disk/by-uuid/f222513b-ded1-49fa-b591-20ce86a2fe7f";
