@@ -83,8 +83,15 @@ resource "aws_security_group" "nixos_instance" {
   description = "Security group for NixOS GitLab runners in private subnets"
   vpc_id      = aws_vpc.main.id
 
-  # No ingress rules needed - runners are in private subnets and use SSM for access
-  
+  # Health check ingress rule for Load Balancer
+  ingress {
+    description = "Health check from Load Balancer"
+    from_port   = 8080
+    to_port     = 8080
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr]
+  }
+
   # Egress rules - only what's needed for GitLab runners
   egress {
     description = "HTTPS to GitLab API"
@@ -124,9 +131,6 @@ resource "aws_security_group" "nixos_instance" {
     "line" = "cost"
   }
 }
-
-# La instancia individual se reemplaza por el Auto Scaling Group
-# Ver archivo autoscaling.tf para la configuración completa
 
 # Auto Scaling Group outputs
 output "autoscaling_group_name" {

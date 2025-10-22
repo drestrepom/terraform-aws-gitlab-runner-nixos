@@ -1,10 +1,24 @@
-# Launch Template for NixOS instances
+locals {
+  nix_src = file("${path.module}/nixos-runner-config.nix")
+  replacements = {
+    "__GITLAB_RUNNER_TOKEN__" = gitlab_user_runner.nixos_runner.token
+    "__HEALTH_CHECK_SCRIPT__" = file("${path.module}/health-check.sh")
+    "__RUNNER_STATUS_SCRIPT__" = file("${path.module}/runner-status.sh")
+  }
+
+  keys_order = ["__GITLAB_RUNNER_TOKEN__", "__HEALTH_CHECK_SCRIPT__", "__RUNNER_STATUS_SCRIPT__"]
+
+  step1 = replace(local.nix_src, local.keys_order[0], local.replacements[local.keys_order[0]])
+  step2 = replace(local.step1,   local.keys_order[1], local.replacements[local.keys_order[1]])
+  step3 = replace(local.step2,   local.keys_order[2], local.replacements[local.keys_order[2]])
+
+  user_data = base64encode(local.step3)
+}
 resource "aws_launch_template" "nixos_runner" {
-  name_prefix   = "nixos-runner-"
-  description   = "Launch template for NixOS GitLab runners"
-  image_id      = data.aws_ami.nixos_arm64.id
-  instance_type = var.nix_builder_instance_type
-  key_name      = aws_key_pair.nixos_instance.key_name
+  name_prefix = "nixos-runner-"
+  description = "Launch template for NixOS GitLab runners"
+  image_id    = data.aws_ami.nixos_arm64.id
+  key_name    = aws_key_pair.nixos_instance.key_name
 
   vpc_security_group_ids = [aws_security_group.nixos_instance.id]
 
@@ -12,10 +26,7 @@ resource "aws_launch_template" "nixos_runner" {
     name = aws_iam_instance_profile.nixos_runner.name
   }
 
-  user_data = base64encode(replace(file("${path.module}/nixos-runner-config.nix"),
-    "__GITLAB_RUNNER_TOKEN__",
-    gitlab_user_runner.nixos_runner.token
-  ))
+  user_data = local.user_data
 
   block_device_mappings {
     device_name = "/dev/xvda"
@@ -30,35 +41,35 @@ resource "aws_launch_template" "nixos_runner" {
   tag_specifications {
     resource_type = "instance"
     tags = {
-      Name                 = "nixos-runner"
-      "comp"              = "nixos-ci"
-      "line"              = "cost"
-      "gitlab-runner-id"  = gitlab_user_runner.nixos_runner.id
+      Name               = "nixos-runner"
+      "comp"             = "nixos-ci"
+      "line"             = "cost"
+      "gitlab-runner-id" = gitlab_user_runner.nixos_runner.id
     }
   }
 
   tag_specifications {
     resource_type = "volume"
     tags = {
-      Name                 = "nixos-runner-volume"
-      "comp"              = "nixos-ci"
-      "line"              = "cost"
+      Name   = "nixos-runner-volume"
+      "comp" = "nixos-ci"
+      "line" = "cost"
     }
   }
 
   tags = {
-    Name                 = "nixos-runner-template"
-    "comp"              = "nixos-ci"
-    "line"              = "cost"
+    Name   = "nixos-runner-template"
+    "comp" = "nixos-ci"
+    "line" = "cost"
   }
 }
 
 # Auto Scaling Group
 resource "aws_autoscaling_group" "nixos_runners" {
-  name                = "nixos-gitlab-runners"
-  vpc_zone_identifier = aws_subnet.private[*].id
-  target_group_arns   = []
-  health_check_type   = var.health_check_type
+  name                      = "nixos-gitlab-runners"
+  vpc_zone_identifier       = aws_subnet.private[*].id
+  target_group_arns         = []
+  health_check_type         = var.health_check_type
   health_check_grace_period = var.health_check_grace_period
 
   min_size         = var.min_size
@@ -70,14 +81,22 @@ resource "aws_autoscaling_group" "nixos_runners" {
     launch_template {
       launch_template_specification {
         launch_template_id = aws_launch_template.nixos_runner.id
-        version           = "$Latest"
+        version            = "$Latest"
+      }
+
+      # Multiple instance types for better Spot availability
+      dynamic "override" {
+        for_each = var.instance_types
+        content {
+          instance_type = override.value
+        }
       }
     }
 
     instances_distribution {
       on_demand_base_capacity                  = 0
-      on_demand_percentage_above_base_capacity = 0
-      spot_allocation_strategy                 = "capacity-optimized"
+      on_demand_percentage_above_base_capacity = var.on_demand_percentage
+      spot_allocation_strategy                 = "price-capacity-optimized"
     }
   }
 
@@ -119,7 +138,7 @@ resource "aws_autoscaling_policy" "scale_up_jobs" {
   name                   = "nixos-runners-scale-up-jobs"
   scaling_adjustment     = 1
   adjustment_type        = "ChangeInCapacity"
-  cooldown               = 60  # Shorter cooldown for job-based scaling
+  cooldown               = 60 # Shorter cooldown for job-based scaling
   autoscaling_group_name = aws_autoscaling_group.nixos_runners.name
 }
 
@@ -127,7 +146,7 @@ resource "aws_autoscaling_policy" "scale_down_jobs" {
   name                   = "nixos-runners-scale-down-jobs"
   scaling_adjustment     = -1
   adjustment_type        = "ChangeInCapacity"
-  cooldown               = 300  # Longer cooldown for scale down
+  cooldown               = 300 # Longer cooldown for scale down
   autoscaling_group_name = aws_autoscaling_group.nixos_runners.name
 }
 
@@ -140,7 +159,7 @@ resource "aws_cloudwatch_metric_alarm" "high_pending_jobs" {
   namespace           = "GitLab/CI"
   period              = "60"
   statistic           = "Average"
-  threshold           = "2"  # Scale up if more than 2 jobs pending
+  threshold           = "2" # Scale up if more than 2 jobs pending
   alarm_description   = "Scale up when GitLab has pending jobs"
   alarm_actions       = [aws_autoscaling_policy.scale_up_jobs.arn]
 
@@ -159,7 +178,7 @@ resource "aws_cloudwatch_metric_alarm" "low_pending_jobs" {
   namespace           = "GitLab/CI"
   period              = "60"
   statistic           = "Average"
-  threshold           = "1"  # Scale down if less than 1 active job
+  threshold           = "1" # Scale down if less than 1 active job
   alarm_description   = "Scale down when GitLab has no active jobs"
   alarm_actions       = [aws_autoscaling_policy.scale_down_jobs.arn]
 
@@ -187,7 +206,7 @@ resource "aws_cloudwatch_metric_alarm" "high_cpu_backup" {
   namespace           = "AWS/EC2"
   period              = "300"
   statistic           = "Average"
-  threshold           = "90"  # Higher threshold as backup
+  threshold           = "90" # Higher threshold as backup
   alarm_description   = "Backup CPU-based scaling for emergency situations"
   alarm_actions       = [aws_autoscaling_policy.scale_up_cpu_backup.arn]
 

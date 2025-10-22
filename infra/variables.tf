@@ -27,10 +27,17 @@ variable "region" {
   type    = string
 }
 
-variable "nix_builder_instance_type" {
-  description = "EC2 instance type for the Nix builder (smallest available ARM64 for testing)"
+# AWS Credentials
+variable "aws_access_key" {
+  description = "AWS Access Key ID"
   type        = string
-  default     = "t4g.medium"
+  sensitive   = true
+}
+
+variable "aws_secret_key" {
+  description = "AWS Secret Access Key"
+  type        = string
+  sensitive   = true
 }
 
 variable "nix_builder_disk_size" {
@@ -135,4 +142,28 @@ variable "gitlab_runner_untagged" {
   description = "Whether the runner should run untagged jobs"
   type        = bool
   default     = true
+}
+
+# Lambda Configuration
+variable "max_capacity" {
+  description = "Maximum capacity for circuit breaker to prevent excessive scaling"
+  type        = number
+  default     = 50
+}
+
+# Spot Instance Configuration
+variable "on_demand_percentage" {
+  description = "Percentage of on-demand instances (0-100). The rest will be spot instances."
+  type        = number
+  default     = 10
+  validation {
+    condition     = var.on_demand_percentage >= 0 && var.on_demand_percentage <= 100
+    error_message = "on_demand_percentage must be between 0 and 100."
+  }
+}
+
+variable "instance_types" {
+  description = "List of instance types to use for mixed instance policy"
+  type        = list(string)
+  default     = ["t4g.medium", "t4g.small", "c6g.medium", "c7g.medium", "m6g.medium"]
 }
