@@ -1,26 +1,29 @@
-#!/bin/bash
+SERVICE_STATUS=$(systemctl is-active gitlab-runner 2>&1 || echo "inactive")
+VALUE=0
+if [ "$SERVICE_STATUS" = "active" ]; then VALUE=1; fi
 
-# Health check script for GitLab Runner
-set -e
+# Get IMDSv2 token
+TOKEN=$(curl -sS -X PUT "http://169.254.169.254/latest/api/token" \
+    -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" \
+--connect-timeout 5 2>/dev/null)
 
-# Check if GitLab Runner service is active
-if ! systemctl is-active --quiet gitlab-runner; then
-    echo "GitLab Runner service not active"
-    exit 1
+if [ -n "$TOKEN" ]; then
+    # Get region using IMDSv2
+    REGION=$(curl -sS -H "X-aws-ec2-metadata-token: $TOKEN" \
+        "http://169.254.169.254/latest/dynamic/instance-identity/document" \
+    --connect-timeout 5 2>/dev/null | jq -r .region 2>/dev/null)
+    
+    # Get instance ID using IMDSv2
+    INSTANCE_ID=$(curl -sS -H "X-aws-ec2-metadata-token: $TOKEN" \
+        "http://169.254.169.254/latest/meta-data/instance-id" \
+    --connect-timeout 5 2>/dev/null)
 fi
 
-# Check if GitLab Runner can connect to GitLab
-if ! timeout 30 gitlab-runner verify --log-level error >/dev/null 2>&1; then
-    echo "GitLab Runner cannot connect to GitLab"
-    exit 1
-fi
-
-# Check if runner processes are running
-if ! pgrep -f gitlab-runner >/dev/null; then
-    echo "No GitLab Runner processes found"
-    exit 1
-fi
-
-# All checks passed
-echo "GitLab Runner is healthy"
-exit 0
+echo "Publishing metric: region=$REGION, instance=$INSTANCE_ID, value=$VALUE"
+aws cloudwatch put-metric-data \
+--region "$REGION" \
+--namespace "GitLab/Runner" \
+--metric-name "RunnerHealthy" \
+--value "$VALUE" \
+--unit Count \
+--dimensions InstanceId="$INSTANCE_ID"

@@ -3,6 +3,9 @@
 {
   imports = [ "${modulesPath}/virtualisation/amazon-image.nix" ];
 
+    # Ensure EC2 user-data gets processed on boot
+  virtualisation.amazon-init.enable = true;
+
   boot.loader.efi.canTouchEfiVariables = false;
   # Enable automatic partitioning for EC2
   boot.initrd.systemd.enable = true;
@@ -24,6 +27,7 @@
     nix
     jq
     procps
+    awscli2
   ];
 
   users.users.nixos = {
@@ -115,6 +119,30 @@
     timerConfig = {
       OnBootSec = "10s";
       OnUnitActiveSec = "30s";
+    };
+  };
+
+  # Publish runner health to CloudWatch
+  systemd.services.publish-runner-health = {
+    script = ''
+    __HEALTH_CHECK_SCRIPT__
+    '';
+    serviceConfig = {
+      Type = "oneshot";
+      User = "root";
+      Environment = [
+        "PATH=${pkgs.curl}/bin:${pkgs.jq}/bin:${pkgs.awscli2}/bin:/run/wrappers/bin:/nix/var/nix/profiles/default/bin:/run/current-system/sw/bin"
+      ];
+    };
+    after = [ "network-online.target" ];
+    wants = [ "network-online.target" ];
+  };
+
+  systemd.timers.publish-runner-health = {
+    wantedBy = [ "timers.target" ];
+    timerConfig = {
+      OnBootSec = "30s";
+      OnUnitActiveSec = "60s";
     };
   };
 
