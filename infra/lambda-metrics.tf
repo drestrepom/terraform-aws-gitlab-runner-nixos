@@ -16,11 +16,16 @@ resource "aws_lambda_function" "gitlab_metrics_collector" {
       GITLAB_URL        = var.gitlab_url
       ASG_NAME          = aws_autoscaling_group.nixos_runners.name
       RUNNER_TAG        = "nixos"
-      
-      # Scaling configuration (parametrized)
+
+      # Basic scaling configuration
       JOBS_PER_INSTANCE  = tostring(var.concurrent_jobs_per_instance)
       MIN_IDLE_INSTANCES = tostring(var.min_idle_instances)
       MAX_INSTANCES      = tostring(var.max_size)
+
+      # Advanced scaling parameters (fleeting plugin logic)
+      SCALE_FACTOR        = "1.0"   # Gradual scaling factor for pending jobs (1.0 = create for all pending)
+      MAX_GROWTH_RATE     = "10"    # Max instances to add per iteration (prevents sudden spikes)
+      SCALE_IN_THRESHOLD  = "0.3"   # Min utilization before scale-in (30% = scale in when < 30% utilized)
     }
   }
 
