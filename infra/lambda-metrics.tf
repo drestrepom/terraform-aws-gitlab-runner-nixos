@@ -11,9 +11,16 @@ resource "aws_lambda_function" "gitlab_metrics_collector" {
 
   environment {
     variables = {
-      GITLAB_TOKEN = var.gitlab_token
+      GITLAB_TOKEN      = var.gitlab_token
       GITLAB_PROJECT_ID = var.gitlab_project_id
-      GITLAB_URL = var.gitlab_url
+      GITLAB_URL        = var.gitlab_url
+      ASG_NAME          = aws_autoscaling_group.nixos_runners.name
+      RUNNER_TAG        = "nixos"
+      
+      # Scaling configuration (parametrized)
+      JOBS_PER_INSTANCE  = tostring(var.concurrent_jobs_per_instance)
+      MIN_IDLE_INSTANCES = tostring(var.min_idle_instances)
+      MAX_INSTANCES      = tostring(var.max_size)
     }
   }
 
@@ -60,9 +67,9 @@ resource "aws_iam_role" "lambda_execution_role" {
   }
 }
 
-# IAM policy for Lambda to write CloudWatch metrics
+# IAM policy for Lambda to write CloudWatch metrics and access ASG/EC2
 resource "aws_iam_role_policy" "lambda_cloudwatch_policy" {
-  name = "gitlab-metrics-cloudwatch-policy"
+  name = "gitlab-metrics-enhanced-policy"
   role = aws_iam_role.lambda_execution_role.id
 
   policy = jsonencode({
@@ -83,15 +90,31 @@ resource "aws_iam_role_policy" "lambda_cloudwatch_policy" {
           "cloudwatch:PutMetricData"
         ]
         Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "autoscaling:DescribeAutoScalingGroups",
+          "autoscaling:SetDesiredCapacity"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "ec2:DescribeInstances",
+          "ec2:DescribeInstanceStatus"
+        ]
+        Resource = "*"
       }
     ]
   })
 }
 
-# EventBridge rule to trigger Lambda every 1 minute
+# EventBridge rule to trigger Lambda every 1 minute (minimum rate supported)
 resource "aws_cloudwatch_event_rule" "gitlab_metrics_schedule" {
-  name                = "gitlab-metrics-schedule"
-  description         = "Trigger GitLab metrics collection every 1 minute"
+  name                = "gitlab-metrics-every-minute"
+  description         = "Trigger GitLab metrics collection every minute"
   schedule_expression = "rate(1 minute)"
 
   tags = {

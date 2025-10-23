@@ -53,7 +53,7 @@
     enable = true;
 
     settings = {
-      concurrent = 1;
+      concurrent = __CONCURRENT_JOBS__;  # Injected by Terraform
       check_interval = 10;
     };
 

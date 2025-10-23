@@ -8,18 +8,6 @@ resource "gitlab_user_runner" "nixos_runner" {
   untagged    = var.gitlab_runner_untagged
 }
 
-# Create AWS Key Pair for NixOS instance
-resource "aws_key_pair" "nixos_instance" {
-  key_name   = "nixos-ci-instance"
-  public_key = coalesce(var.nix_builder_authorized_key, file("${path.module}/nix_builder_key.pub"))
-
-  tags = {
-    Name                 = "nixos-ci-instance"
-    "comp" = "nixos-ci"
-    "line" = "cost"
-  }
-}
-
 # IAM Role for SSM Agent
 resource "aws_iam_role" "nixos_runner" {
   name = "nixos-runner-role"
@@ -48,6 +36,26 @@ resource "aws_iam_role" "nixos_runner" {
 resource "aws_iam_role_policy_attachment" "nixos_runner_ssm" {
   role       = aws_iam_role.nixos_runner.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
+resource "aws_iam_role_policy" "nixos_runner_cloudwatch_put" {
+  name = "nixos-runner-cloudwatch-put-metric"
+  role = aws_iam_role.nixos_runner.id
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect = "Allow",
+        Action = [
+          "cloudwatch:PutMetricData"
+        ],
+        Resource = "*",
+        Condition = {
+          StringEquals = { "cloudwatch:namespace" = ["GitLab/Runner"] }
+        }
+      }
+    ]
+  })
 }
 
 # IAM Instance Profile
@@ -83,13 +91,13 @@ resource "aws_security_group" "nixos_instance" {
   description = "Security group for NixOS GitLab runners in private subnets"
   vpc_id      = aws_vpc.main.id
 
-  # Health check ingress rule for Load Balancer
+  # Health check ingress rule
   ingress {
-    description = "Health check from Load Balancer"
-    from_port   = 8080
-    to_port     = 8080
+    description = "Health check from within VPC"
+    from_port   = 80
+    to_port     = 80
     protocol    = "tcp"
-    cidr_blocks = [var.vpc_cidr]
+    cidr_blocks = ["10.0.0.0/16"]  # VPC CIDR
   }
 
   # Egress rules - only what's needed for GitLab runners
