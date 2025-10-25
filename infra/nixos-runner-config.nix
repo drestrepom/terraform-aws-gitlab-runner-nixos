@@ -68,7 +68,7 @@
 
   environment.etc."gitlab-runner-authentication.env" = {
     text = ''
-      CI_SERVER_URL=https://gitlab.com
+      CI_SERVER_URL=__GITLAB_URL__
       CI_SERVER_TOKEN=__GITLAB_RUNNER_TOKEN__
     '';
     mode = "0400";
