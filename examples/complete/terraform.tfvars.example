@@ -1,0 +1,36 @@
+# Example terraform.tfvars
+# Copy this file to terraform.tfvars and fill in your values
+
+aws_region  = "us-east-1"
+environment = "production"
+
+# GitLab Configuration
+gitlab_url        = "https://gitlab.com"
+gitlab_token      = "glpat-xxxxxxxxxxxxxxxxxxxx"  # Personal Access Token with create_runner and read_api scopes
+gitlab_project_id = 12345  # Find in Project Settings → General
+
+# Capacity
+max_instances                = 10
+min_idle_instances           = 1
+concurrent_jobs_per_instance = 2
+
+# Instance Types (ARM64)
+instance_types = [
+  "t4g.medium",   # 2 vCPU, 4 GB RAM - Good for most builds
+  "t4g.small",    # 2 vCPU, 2 GB RAM - Small builds
+  "c6g.medium",   # 1 vCPU, 2 GB RAM - Compute optimized
+]
+
+# Storage
+root_volume_size = 40  # GB - Adjust based on your Nix store needs
+
+# Cost Optimization
+on_demand_percentage = 10  # 90% spot instances for cost savings
+
+# Tags
+additional_tags = {
+  Team       = "platform"
+  CostCenter = "engineering"
+  Project    = "gitlab-ci"
+}
+
