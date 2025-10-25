@@ -166,10 +166,15 @@ output "desired_capacity" {
   description = "Desired capacity of the ASG"
 }
 
-# NAT Gateway outputs
-output "nat_gateway_ip" {
-  value       = aws_eip.nat.public_ip
-  description = "Public IP of the NAT Gateway (shared by all runners)"
+# NAT Instance outputs
+output "nat_instance_ip" {
+  value       = aws_instance.nat.public_ip
+  description = "Public IP of the NAT Instance (shared by all runners)"
+}
+
+output "nat_instance_id" {
+  value       = aws_instance.nat.id
+  description = "Instance ID of the NAT Instance"
 }
 
 # Lambda function outputs

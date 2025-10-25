@@ -62,7 +62,7 @@ variable "concurrent_jobs_per_instance" {
 variable "min_idle_instances" {
   description = "Minimum number of idle runners to always keep on (0 = most cost effective)"
   type        = number
-  default     = 0
+  default     = 1
   validation {
     condition     = var.min_idle_instances >= 0
     error_message = "min_idle_instances must be 0 or greater"
@@ -166,4 +166,15 @@ variable "max_capacity" {
   description = "[DEPRECATED] Use max_size instead"
   type        = number
   default     = 50
+}
+
+variable "nat_instance_type" {
+  description = "Instance type for NAT Instance"
+  type        = string
+  default     = "t3.nano"
+  
+  validation {
+    condition = can(regex("^(t3|t4g|c5|c6i|m5|m6i)\\.(nano|micro|small|medium|large|xlarge|2xlarge|4xlarge|9xlarge)$", var.nat_instance_type))
+    error_message = "Instance type must be a valid EC2 instance type for NAT functionality."
+  }
 }
