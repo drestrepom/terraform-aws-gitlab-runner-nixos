@@ -36,7 +36,6 @@ module "gitlab_runner" {
 
   # Environment configuration
   environment = var.environment
-  aws_region  = var.aws_region
 
   # GitLab configuration (runner created automatically)
   gitlab_url        = var.gitlab_url

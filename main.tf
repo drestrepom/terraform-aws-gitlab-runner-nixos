@@ -18,14 +18,13 @@ data "aws_region" "current" {}
 # Use provided availability zones or default to region's AZs
 locals {
   availability_zones = length(var.availability_zones) > 0 ? var.availability_zones : [
-    "${data.aws_region.current.name}a",
-    "${data.aws_region.current.name}b"
+    "${data.aws_region.current.id}a",
+    "${data.aws_region.current.id}b"
   ]
 
   # Determine if we need to create networking resources
-  create_networking = var.create_vpc
-  vpc_id            = var.create_vpc ? aws_vpc.main[0].id : var.vpc_id
-  subnet_ids        = var.create_vpc ? aws_subnet.private[*].id : var.subnet_ids
+  vpc_id     = var.create_vpc ? aws_vpc.main[0].id : var.vpc_id
+  subnet_ids = var.create_vpc ? aws_subnet.private[*].id : var.subnet_ids
 
   # Common tags for all resources
   common_tags = merge(

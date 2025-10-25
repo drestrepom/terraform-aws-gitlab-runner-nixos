@@ -62,12 +62,6 @@ variable "gitlab_runner_untagged" {
 # AWS CONFIGURATION
 # ============================================
 
-variable "aws_region" {
-  description = "AWS region where resources will be created"
-  type        = string
-  default     = "us-east-1"
-}
-
 variable "availability_zones" {
   description = "List of availability zones for the runners. If not provided, defaults will be used based on region."
   type        = list(string)
