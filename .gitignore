@@ -1,7 +1,52 @@
+# Terraform files
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+.terraform/
+.terraform.lock.hcl
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Lambda deployment packages
+*.zip
+gitlab_metrics_collector.zip
+
+# Module outputs (generated during testing)
+examples/**/config.toml
+examples/**/.terraform/
+examples/**/.terraform.lock.hcl
+examples/**/*.tfstate
+examples/**/*.tfstate.*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# NixOS build artifacts
+result
+result-*
+
+# Local testing
 .envrc
-infra/terraform.tfstate
-infra/.terraform
-infra/nix_builder_key
-.direnv
-.envrc
-.env
+.direnv/
+
+# Documentation generation
+.terraform-docs.yml
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+*.log
