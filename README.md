@@ -27,7 +27,6 @@ graph LR
 - ❌ Every job starts from scratch
 - ❌ No caching between jobs
 - ❌ Wasted time rebuilding derivations
-- ❌ Wasted money on redundant builds
 - ❌ Complicated caching strategies that don't work well
 
 ### The Solution: Native Nix with Persistent Store
@@ -50,29 +49,21 @@ graph LR
 
 **Benefits:**
 - ✅ Derivations cached in the Nix store
-- ✅ Subsequent builds are **10-100x faster**
-- ✅ Massive cost savings (90%+ with spot instances)
+- ✅ Subsequent builds are significantly faster
 - ✅ No Docker overhead
 - ✅ Simple, elegant solution
-
-## 📊 Cost Comparison
-
-| Setup | Monthly Cost (10 runners) | Build Speed |
-|-------|---------------------------|-------------|
-| GitLab.com SaaS | $290-$580 | Baseline |
-| Docker + NAT Gateway | ~$35-$40 | 1x (no cache) |
-| **This Module (Nix + NAT Instance)** | **~$8-$15** | **10-100x** (with cache) |
+- ✅ Native NixOS environment
 
 ## 🎯 Features
 
 - **Native Nix Support**: Run Nix flakes without Docker
 - **Persistent Nix Store**: Build once, use many times
 - **Auto-scaling**: Intelligent scaling based on GitLab job queue
-- **Cost-Optimized**: 90%+ cost savings with spot instances
 - **High Availability**: Multi-AZ deployment
 - **Flexible Networking**: BYO VPC or create new
 - **Monitoring**: CloudWatch metrics and dashboards
 - **Security**: SSM access, encrypted volumes, IMDSv2
+- **Customizable**: Additional NixOS configuration blocks
 
 ## 📋 Requirements
 
@@ -161,7 +152,7 @@ test:
 
 ## 📚 Usage Examples
 
-### Basic Setup (Minimal Configuration)
+### Basic Setup
 
 ```hcl
 module "gitlab_runner" {
@@ -171,13 +162,12 @@ module "gitlab_runner" {
   gitlab_url          = "https://gitlab.com"
   gitlab_runner_token = var.gitlab_runner_token
 
-  # Simple autoscaling
   max_instances      = 5
-  min_idle_instances = 0  # Most cost-effective
+  min_idle_instances = 0
 }
 ```
 
-### Production Setup (Full Features)
+### Production Setup
 
 ```hcl
 module "gitlab_runner" {
@@ -187,35 +177,19 @@ module "gitlab_runner" {
   gitlab_url          = "https://gitlab.example.com"
   gitlab_runner_token = var.gitlab_runner_token
 
-  # Intelligent autoscaling with GitLab API
+  # Intelligent autoscaling
   enable_gitlab_metrics = true
   gitlab_token         = var.gitlab_api_token
   gitlab_project_id    = 12345
 
-  # High capacity
-  max_instances               = 50
-  min_idle_instances          = 5
-  concurrent_jobs_per_instance = 4
+  # Capacity
+  max_instances               = 20
+  min_idle_instances          = 2
+  concurrent_jobs_per_instance = 2
 
-  # Larger instances for heavy builds
-  instance_types = ["c6g.xlarge", "c7g.xlarge", "m6g.xlarge"]
-  root_volume_size = 100  # GB, for large Nix store
-
-  # Higher availability (more on-demand instances)
-  on_demand_percentage = 30  # 70% spot
-
-  # Use NAT Gateway instead of NAT Instance for better reliability
-  enable_nat_gateway = true
-
-  # Enhanced monitoring
+  # Monitoring
   enable_cloudwatch_monitoring = true
   enable_ssm_access           = true
-
-  tags = {
-    Environment = "production"
-    Team        = "platform"
-    ManagedBy   = "terraform"
-  }
 }
 ```
 
@@ -232,42 +206,9 @@ module "gitlab_runner" {
   # Use existing VPC
   create_vpc = false
   vpc_id     = "vpc-xxxxx"
-  subnet_ids = [
-    "subnet-xxxxx",
-    "subnet-yyyyy"
-  ]
+  subnet_ids = ["subnet-xxxxx", "subnet-yyyyy"]
 
   max_instances = 10
-}
-```
-
-### Multi-Region Setup
-
-```hcl
-# US East runners
-module "gitlab_runner_us_east" {
-  source = "github.com/your-org/terraform-aws-gitlab-runner-nixos"
-
-  environment         = "us-east"
-  aws_region          = "us-east-1"
-  gitlab_url          = "https://gitlab.com"
-  gitlab_runner_token = var.gitlab_runner_token
-
-  gitlab_runner_tags = ["nixos", "us-east", "arm64"]
-  max_instances      = 10
-}
-
-# EU West runners
-module "gitlab_runner_eu_west" {
-  source = "github.com/your-org/terraform-aws-gitlab-runner-nixos"
-
-  environment         = "eu-west"
-  aws_region          = "eu-west-1"
-  gitlab_url          = "https://gitlab.com"
-  gitlab_runner_token = var.gitlab_runner_token
-
-  gitlab_runner_tags = ["nixos", "eu-west", "arm64"]
-  max_instances      = 10
 }
 ```
 
@@ -275,49 +216,77 @@ module "gitlab_runner_eu_west" {
 
 ### Infrastructure Diagram
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                           AWS Cloud                              │
-│                                                                   │
-│  ┌────────────────────────────────────────────────────────────┐ │
-│  │                      VPC (10.0.0.0/16)                     │ │
-│  │                                                             │ │
-│  │  ┌──────────────┐           ┌──────────────┐              │ │
-│  │  │ Public Subnet│           │ Public Subnet│              │ │
-│  │  │              │           │              │              │ │
-│  │  │  ┌────────┐  │           │              │              │ │
-│  │  │  │  NAT   │  │←──────────┤  Internet    │              │ │
-│  │  │  │Instance│  │           │  Gateway     │              │ │
-│  │  │  └────────┘  │           │              │              │ │
-│  │  └──────┬───────┘           └──────────────┘              │ │
-│  │         │                                                  │ │
-│  │         │ (routes outbound)                                │ │
-│  │         │                                                  │ │
-│  │  ┌──────▼───────────────────────────────────────────────┐ │ │
-│  │  │            Private Subnets (Multi-AZ)               │ │ │
-│  │  │                                                      │ │ │
-│  │  │  ┌─────────┐  ┌─────────┐  ┌─────────┐            │ │ │
-│  │  │  │ NixOS   │  │ NixOS   │  │ NixOS   │  ...       │ │ │
-│  │  │  │ Runner  │  │ Runner  │  │ Runner  │            │ │ │
-│  │  │  │         │  │         │  │         │            │ │ │
-│  │  │  │ ┌─────┐ │  │ ┌─────┐ │  │ ┌─────┐ │            │ │ │
-│  │  │  │ │ Nix │ │  │ │ Nix │ │  │ │ Nix │ │            │ │ │
-│  │  │  │ │Store│ │  │ │Store│ │  │ │Store│ │            │ │ │
-│  │  │  │ └─────┘ │  │ └─────┘ │  │ └─────┘ │            │ │ │
-│  │  │  └─────────┘  └─────────┘  └─────────┘            │ │ │
-│  │  │                                                      │ │ │
-│  │  │            Auto Scaling Group (0-50 instances)      │ │ │
-│  │  └──────────────────────────────────────────────────────┘ │ │
-│  └─────────────────────────────────────────────────────────────┘ │
-│                                                                   │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │              Lambda Function (Auto-Scaling)              │   │
-│  │  • Checks GitLab API for pending jobs every 1 min       │   │
-│  │  • Scales ASG up/down based on demand                   │   │
-│  │  • Publishes metrics to CloudWatch                       │   │
-│  └──────────────────────────────────────────────────────────┘   │
-│                                                                   │
-└───────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TB
+    subgraph AWS["AWS Cloud"]
+        subgraph VPC["VPC (10.0.0.0/16)"]
+            subgraph PublicSubnets["Public Subnets (Multi-AZ)"]
+                IGW["Internet Gateway"]
+                NAT["NAT Instance"]
+            end
+
+            subgraph PrivateSubnets["Private Subnets (Multi-AZ)"]
+                subgraph ASG["Auto Scaling Group"]
+                    Runner1["NixOS Runner<br/>└─ Nix Store"]
+                    Runner2["NixOS Runner<br/>└─ Nix Store"]
+                    Runner3["NixOS Runner<br/>└─ Nix Store"]
+                end
+            end
+
+            subgraph Lambda["Lambda Function"]
+                LambdaFunc["Auto-Scaling Logic<br/>• Checks GitLab API<br/>• Scales ASG<br/>• Publishes metrics"]
+            end
+
+            subgraph CloudWatch["CloudWatch"]
+                Metrics["Metrics & Dashboards"]
+            end
+        end
+
+        subgraph External["External Services"]
+            GitLab["GitLab CI/CD"]
+        end
+    end
+
+    %% Connections
+    IGW -->|"Internet"| NAT
+    NAT -->|"Outbound"| Runner1
+    NAT -->|"Outbound"| Runner2
+    NAT -->|"Outbound"| Runner3
+
+    LambdaFunc -->|"Scale"| ASG
+    LambdaFunc -->|"Metrics"| Metrics
+    LambdaFunc -->|"API"| GitLab
+
+    Runner1 -->|"Jobs"| GitLab
+    Runner2 -->|"Jobs"| GitLab
+    Runner3 -->|"Jobs"| GitLab
+
+    %% Styling
+    classDef aws fill:#f3e8ff,stroke:#7c3aed,stroke-width:3px,color:#581c87
+    classDef vpc fill:#e9d5ff,stroke:#8b5cf6,stroke-width:3px,color:#581c87
+    classDef public fill:#ddd6fe,stroke:#a855f7,stroke-width:3px,color:#581c87
+    classDef private fill:#c4b5fd,stroke:#c084fc,stroke-width:3px,color:#581c87
+    classDef lambda fill:#a78bfa,stroke:#d946ef,stroke-width:3px,color:#581c87
+    classDef external fill:#fbbf24,stroke:#f59e0b,stroke-width:3px,color:#92400e
+
+    class AWS aws
+    class VPC vpc
+    class PublicSubnets public
+    class PrivateSubnets private
+    class Lambda lambda
+    class External external
+    
+    %% Link styling - make connections more visible
+    linkStyle 0 stroke:#7c3aed,stroke-width:3px
+    linkStyle 1 stroke:#7c3aed,stroke-width:3px
+    linkStyle 2 stroke:#7c3aed,stroke-width:3px
+    linkStyle 3 stroke:#7c3aed,stroke-width:3px
+    linkStyle 4 stroke:#d946ef,stroke-width:3px
+    linkStyle 5 stroke:#d946ef,stroke-width:3px
+    linkStyle 6 stroke:#d946ef,stroke-width:3px
+    linkStyle 7 stroke:#f59e0b,stroke-width:3px
+    linkStyle 8 stroke:#f59e0b,stroke-width:3px
+    linkStyle 9 stroke:#f59e0b,stroke-width:3px
 ```
 
 ### How It Works
@@ -327,7 +296,7 @@ module "gitlab_runner_eu_west" {
 3. **Job Execution**: Jobs run natively on NixOS with the shell executor
 4. **Nix Store**: Derivations are cached in the persistent Nix store
 5. **Auto-Scaling**: Lambda function monitors GitLab queue and scales ASG
-6. **Cost Optimization**: 90% spot instances for massive savings
+6. **Flexible Deployment**: Support for both spot and on-demand instances
 
 ### Autoscaling Logic
 
@@ -353,7 +322,8 @@ Scale-in occurs when utilization falls below `scale_in_threshold`.
 |------|-------------|------|---------|:--------:|
 | `environment` | Environment name (e.g., production, staging) | `string` | n/a | yes |
 | `gitlab_url` | GitLab instance URL | `string` | `"https://gitlab.com"` | no |
-| `gitlab_runner_token` | GitLab runner authentication token | `string` | n/a | yes |
+| `gitlab_token` | GitLab Personal Access Token with 'create_runner' scope | `string` | n/a | yes |
+| `gitlab_project_id` | GitLab Project ID where the runner will be registered | `number` | n/a | yes |
 | `gitlab_runner_tags` | Tags for the GitLab runner | `list(string)` | `["nixos", "nix", "arm64", "shell"]` | no |
 | `max_instances` | Maximum number of runner instances | `number` | `10` | no |
 | `min_idle_instances` | Minimum number of idle instances to keep warm | `number` | `0` | no |
@@ -361,14 +331,16 @@ Scale-in occurs when utilization falls below `scale_in_threshold`.
 | `instance_types` | List of EC2 instance types | `list(string)` | `["t4g.medium", ...]` | no |
 | `on_demand_percentage` | Percentage of on-demand vs spot instances | `number` | `10` | no |
 | `root_volume_size` | Root volume size in GB | `number` | `40` | no |
+| `gitlab_runner_volume_size` | Additional EBS volume size for GitLab Runner builds in GB | `number` | `100` | no |
+| `gitlab_runner_volume_type` | Type of the GitLab Runner volume (gp2, gp3, io1, io2) | `string` | `gp3` | no |
 | `enable_gitlab_metrics` | Enable GitLab API metrics collection | `bool` | `true` | no |
-| `gitlab_token` | GitLab PAT with read_api scope (for metrics) | `string` | `""` | no |
-| `gitlab_project_id` | GitLab project ID (for metrics) | `number` | `0` | no |
 | `create_vpc` | Create a new VPC | `bool` | `true` | no |
 | `vpc_id` | Existing VPC ID (if create_vpc is false) | `string` | `""` | no |
 | `subnet_ids` | Existing subnet IDs (if create_vpc is false) | `list(string)` | `[]` | no |
 | `enable_nat_gateway` | Use NAT Gateway instead of NAT Instance | `bool` | `false` | no |
 | `enable_ssm_access` | Enable AWS Systems Manager access | `bool` | `true` | no |
+| `custom_nixos_config` | Custom NixOS configuration to override defaults | `string` | `""` | no |
+| `additional_nixos_configs` | List of additional NixOS configuration blocks to import | `list(string)` | `[]` | no |
 
 <details>
 <summary><b>View all inputs (50+)</b></summary>
@@ -415,6 +387,30 @@ module "gitlab_runner" {
   custom_nixos_config = file("${path.module}/custom-runner-config.nix")
 }
 ```
+
+### Additional NixOS Configuration Blocks
+
+You can also provide additional NixOS configuration blocks that will be imported into the base configuration:
+
+```hcl
+module "gitlab_runner" {
+  source = "github.com/your-org/terraform-aws-gitlab-runner-nixos"
+
+  environment         = "production"
+  gitlab_runner_token = var.token
+
+  additional_nixos_configs = [
+    # Custom package configuration
+    "{ config, pkgs, ... }: { environment.systemPackages = with pkgs; [ vim ]; }",
+    # Custom service configuration
+    "{ config, pkgs, ... }: { services.nginx.enable = true; }",
+    # Custom user configuration
+    "{ config, pkgs, ... }: { users.users.myuser = { isNormalUser = true; }; }"
+  ]
+}
+```
+
+This approach allows you to add specific configurations without overriding the entire base configuration, making it more modular and maintainable.
 
 ### Autoscaling Parameters
 
@@ -508,26 +504,10 @@ terraform output -raw lambda_logs_command | bash
 
 ## 💰 Cost Optimization
 
-### Cost Breakdown (Monthly, 10 runners example)
-
-| Component | Cost (t4g.medium, us-east-1) |
-|-----------|------------------------------|
-| **Spot Instances** (90%): 9 x $0.0084/hr | ~$5.50 |
-| **On-Demand Instances** (10%): 1 x $0.0336/hr | ~$24.50 |
-| **NAT Instance** (t3.nano): $0.0052/hr | ~$3.80 |
-| **Data Transfer**: varies | ~$2-5 |
-| **Lambda**: 43,200 invocations/month | ~$0.01 |
-| **CloudWatch**: Basic monitoring | ~$1-2 |
-| **Total** | **~$12-15/month** |
-
-Compare to:
-- GitLab.com SaaS (10 runners): **$290-$580/month**
-- Docker-based with NAT Gateway: **$35-$40/month**
-
 ### Cost Optimization Tips
 
 1. **Use spot instances**: Set `on_demand_percentage = 0-10%` (default)
-2. **NAT Instance over Gateway**: Save ~$30/month (default)
+2. **NAT Instance over Gateway**: More cost-effective option available
 3. **Minimal idle instances**: Set `min_idle_instances = 0-1`
 4. **Right-size instances**: Start with `t4g.small` or `t4g.medium`
 5. **Enable intelligent scaling**: Use GitLab API metrics
