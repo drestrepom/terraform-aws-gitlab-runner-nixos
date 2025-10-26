@@ -1,6 +1,6 @@
 locals {
   # Load the NixOS configuration template
-  nix_src_base = file("${path.module}/infra/nixos-runner-config.nix")
+  nix_src_base = file("${path.module}/scripts/nixos-runner-config.nix")
   nix_src      = var.custom_nixos_config != "" ? var.custom_nixos_config : local.nix_src_base
   # Generate additional imports from user-provided configs
   additional_imports = length(var.additional_nixos_configs) > 0 ? [
@@ -14,8 +14,8 @@ locals {
   replacements = {
     "__GITLAB_RUNNER_TOKEN__"  = local.runner_token # Token from GitLab provider
     "__GITLAB_URL__"           = var.gitlab_url
-    "__HEALTH_CHECK_SCRIPT__"  = file("${path.module}/infra/health-check.sh")
-    "__RUNNER_STATUS_SCRIPT__" = file("${path.module}/infra/runner-status.sh")
+    "__HEALTH_CHECK_SCRIPT__"  = file("${path.module}/scripts/health-check.sh")
+    "__RUNNER_STATUS_SCRIPT__" = file("${path.module}/scripts/runner-status.sh")
     "__CONCURRENT_JOBS__"      = tostring(var.concurrent_jobs_per_instance)
     "__NIX_CONFIG_IMPORT__"    = local.imports_section
   }

@@ -1,9 +1,9 @@
 { inputs', pkgs }:
 pkgs.writeShellApplication {
-  name = "shellcheck-lint";
+  name = "nix-lint";
   runtimeInputs = [
-    pkgs.shellcheck
-    pkgs.shfmt
+    pkgs.nixpkgs-fmt
+    pkgs.nixfmt
   ];
   text = ''
     # shellcheck disable=SC1091

@@ -25,16 +25,11 @@
             inherit projectPath;
             terraform = import ./nix/lib/terraform.nix { inherit pkgs; };
           };
-        in {
+        in
+        {
           _module.args.pkgs = import inputs.nixpkgs {
             inherit system;
             config.allowUnfree = true;
-          };
-
-          # Main application
-          apps.default = {
-            type = "app";
-            program = "${self'.packages.infra}/bin/sifts-infra";
           };
 
           # Development shell
@@ -48,7 +43,6 @@
               terraform
               tflint
               terraform-docs
-              tfsec
               checkov
               shellcheck
               awscli2
@@ -57,8 +51,8 @@
           };
 
           # Packages
-          packages = import ./nix/pkgs { 
-            inherit inputs' lib' pkgs inputs self'; 
+          packages = import ./nix/pkgs {
+            inherit inputs' lib' pkgs inputs self';
           };
         };
     };

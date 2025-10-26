@@ -2,7 +2,7 @@
 resource "aws_lambda_function" "gitlab_metrics_collector" {
   count = var.enable_gitlab_metrics ? 1 : 0
 
-  filename      = "${path.module}/infra/gitlab_metrics_collector.zip"
+  filename      = "${path.module}/scripts/gitlab_metrics_collector.zip"
   function_name = "${var.environment}-gitlab-metrics-collector"
   role          = aws_iam_role.lambda_execution_role[0].arn
   handler       = "lambda_function.lambda_handler"
@@ -43,9 +43,9 @@ resource "aws_lambda_function" "gitlab_metrics_collector" {
 # Create the Lambda deployment package
 data "archive_file" "lambda_zip" {
   type        = "zip"
-  output_path = "${path.module}/infra/gitlab_metrics_collector.zip"
+  output_path = "${path.module}/scripts/gitlab_metrics_collector.zip"
   source {
-    content = templatefile("${path.module}/infra/lambda_function.py", {
+    content = templatefile("${path.module}/scripts/lambda_function.py", {
       gitlab_url = var.gitlab_url
     })
     filename = "lambda_function.py"
