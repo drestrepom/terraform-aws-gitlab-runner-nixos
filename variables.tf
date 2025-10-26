@@ -146,7 +146,7 @@ variable "concurrent_jobs_per_instance" {
 }
 
 variable "min_idle_instances" {
-  description = "Minimum number of idle runner instances to keep warm (0 = most cost effective)"
+  description = "Minimum number of idle runner instances to keep warm"
   type        = number
   default     = 0
 
@@ -183,19 +183,8 @@ variable "desired_capacity" {
 # SPOT INSTANCES CONFIGURATION
 # ============================================
 
-variable "on_demand_percentage" {
-  description = "Percentage of on-demand instances vs spot instances (0-100). Lower values use more spot instances and are more cost-effective."
-  type        = number
-  default     = 10
-
-  validation {
-    condition     = var.on_demand_percentage >= 0 && var.on_demand_percentage <= 100
-    error_message = "on_demand_percentage must be between 0 and 100"
-  }
-}
-
 variable "spot_allocation_strategy" {
-  description = "How to allocate capacity across spot pools. 'price-capacity-optimized' balances cost and availability."
+  description = "How to allocate capacity across spot pools. 'price-capacity-optimized' balances price and availability."
   type        = string
   default     = "price-capacity-optimized"
 
@@ -221,7 +210,7 @@ variable "scale_factor" {
 }
 
 variable "max_growth_rate" {
-  description = "Maximum number of instances to add per scaling iteration (prevents sudden cost spikes)"
+  description = "Maximum number of instances to add per scaling iteration"
   type        = number
   default     = 10
 }
@@ -265,7 +254,7 @@ variable "vpc_cidr" {
 }
 
 variable "enable_nat_gateway" {
-  description = "Use AWS NAT Gateway instead of NAT instance. NAT Gateway is more reliable but costs ~$32/month vs ~$3.50/month for NAT instance."
+  description = "Use AWS NAT Gateway instead of NAT instance"
   type        = bool
   default     = false
 }
@@ -354,12 +343,6 @@ variable "runner_tags" {
 # ============================================
 # ADVANCED CONFIGURATION
 # ============================================
-
-variable "custom_nixos_config" {
-  description = "Custom NixOS configuration to merge with the default runner configuration. Overrides default settings."
-  type        = string
-  default     = ""
-}
 
 variable "additional_nixos_configs" {
   description = "List of additional NixOS configuration blocks to import. Each item should be a valid NixOS configuration block that can be imported."

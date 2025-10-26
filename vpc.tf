@@ -99,7 +99,6 @@ resource "aws_subnet" "private" {
 
 # ============================================================================
 # NAT Instance (for outbound Internet access)
-# Cost: ~$3.50/month (89% savings vs NAT Gateway)
 # ============================================================================
 
 # Get latest Amazon Linux 2 AMI for NAT

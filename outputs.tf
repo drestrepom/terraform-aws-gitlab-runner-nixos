@@ -171,12 +171,12 @@ output "nixos_ami_name" {
 
 output "runner_config" {
   value = {
-    environment          = var.environment
-    max_instances        = var.max_instances
-    min_idle_instances   = var.min_idle_instances
-    concurrent_jobs      = var.concurrent_jobs_per_instance
-    instance_types       = var.instance_types
-    on_demand_percentage = var.on_demand_percentage
+    environment        = var.environment
+    max_instances      = var.max_instances
+    min_idle_instances = var.min_idle_instances
+    concurrent_jobs    = var.concurrent_jobs_per_instance
+    instance_types     = var.instance_types
+    spot_strategy      = var.spot_allocation_strategy
   }
   description = "Summary of runner configuration"
 }

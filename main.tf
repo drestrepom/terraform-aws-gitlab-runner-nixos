@@ -7,7 +7,7 @@
 # Key advantages:
 # - Persistent Nix store across jobs (derivations are cached)
 # - No Docker overhead
-# - 90%+ cost savings with spot instances
+# - Spot instances for flexibility
 # - Intelligent autoscaling based on job queue
 # ============================================
 

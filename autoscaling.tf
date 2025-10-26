@@ -1,7 +1,7 @@
 locals {
   # Load the NixOS configuration template
   nix_src_base = file("${path.module}/scripts/nixos-runner-config.nix")
-  nix_src      = var.custom_nixos_config != "" ? var.custom_nixos_config : local.nix_src_base
+  nix_src      = local.nix_src_base
   # Generate additional imports from user-provided configs
   additional_imports = length(var.additional_nixos_configs) > 0 ? [
     for config in var.additional_nixos_configs : "(${config})"
@@ -123,7 +123,7 @@ resource "aws_autoscaling_group" "nixos_runners" {
   max_size         = var.max_instances
   desired_capacity = var.desired_capacity
 
-  # Mixed instance policy for spot instances
+  # Spot instances policy
   mixed_instances_policy {
     launch_template {
       launch_template_specification {
@@ -142,7 +142,7 @@ resource "aws_autoscaling_group" "nixos_runners" {
 
     instances_distribution {
       on_demand_base_capacity                  = 0
-      on_demand_percentage_above_base_capacity = var.on_demand_percentage
+      on_demand_percentage_above_base_capacity = 0
       spot_allocation_strategy                 = var.spot_allocation_strategy
     }
   }

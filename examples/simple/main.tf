@@ -2,7 +2,7 @@
 #
 # This example demonstrates the simplest possible setup with:
 # - Minimal configuration
-# - Cost-effective defaults
+# - Default settings
 # - Single region deployment
 
 terraform {
@@ -39,7 +39,7 @@ module "gitlab_runner" {
 
   # Optional: Configure capacity (defaults shown)
   max_instances      = 5
-  min_idle_instances = 0 # Most cost-effective
+  min_idle_instances = 0
 
   # Tags
   tags = {

@@ -2,7 +2,7 @@
 #
 # This example demonstrates a production-ready setup with:
 # - Intelligent autoscaling based on GitLab API
-# - Cost optimization with spot instances
+# - Spot instances with multiple instance types
 # - CloudWatch monitoring
 # - SSM access for debugging
 
@@ -59,13 +59,12 @@ module "gitlab_runner" {
   instance_types   = var.instance_types
   root_volume_size = var.root_volume_size
 
-  # Cost optimization
-  on_demand_percentage     = var.on_demand_percentage
+  # Spot instances
   spot_allocation_strategy = "price-capacity-optimized"
 
   # Networking
   create_vpc         = true
-  enable_nat_gateway = false # Use NAT Instance for cost savings
+  enable_nat_gateway = false # Use NAT Instance
 
   # Autoscaling configuration
   scale_factor       = 1.0

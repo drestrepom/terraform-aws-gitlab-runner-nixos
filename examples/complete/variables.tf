@@ -56,7 +56,7 @@ variable "min_idle_instances" {
 variable "concurrent_jobs_per_instance" {
   description = "Number of concurrent jobs each runner can execute"
   type        = number
-  default     = 2
+  default     = 5
 }
 
 # ============================================
@@ -73,16 +73,6 @@ variable "root_volume_size" {
   description = "Size of the root volume in GB (for Nix store)"
   type        = number
   default     = 40
-}
-
-# ============================================
-# Cost Optimization
-# ============================================
-
-variable "on_demand_percentage" {
-  description = "Percentage of on-demand vs spot instances (0-100)"
-  type        = number
-  default     = 10
 }
 
 # ============================================
