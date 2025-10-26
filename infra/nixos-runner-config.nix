@@ -147,7 +147,7 @@
 
   # Systemd timer to update runner status file
   systemd.services.update-runner-status = {
-    script = ''__RUNNER_STATUS_SCRIPT__'';
+    script = "__RUNNER_STATUS_SCRIPT__";
     serviceConfig = {
       Type = "oneshot";
       User = "root";

@@ -89,6 +89,10 @@ module "gitlab_runner" {
   runner_tags = {
     Purpose = "gitlab-runner"
   }
+
+  additional_nixos_configs = [
+    file("${path.module}/nix-config.nix")
+  ]
 }
 
 # Outputs
