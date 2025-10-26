@@ -8,209 +8,55 @@ A Terraform module for deploying auto-scaling GitLab runners on AWS with **nativ
 
 ## 🚀 Why This Module?
 
-### The Problem with Docker-based Runners
+### The Problem: Docker-based Runners
 
-Most GitLab runners use Docker images to run Nix flakes. This approach has significant drawbacks:
+Most GitLab runner modules use Docker with a **deceptive architecture**: they register a single runner with GitLab, then use custom orchestration code to distribute jobs across multiple containers. This creates several critical issues:
 
-```mermaid
-graph LR
-    A[Job Starts] --> B[Pull Docker Image]
-    B --> C[Start Container]
-    C --> D[Run Nix Build]
-    D --> E[Build from Scratch]
-    E --> F[Job Complete]
-    F --> G[Container Destroyed]
-    G --> H[All Builds Lost]
-```
+**Key Problems:**
+- 🚨 **Hidden Complexity**: GitLab sees 1 runner, but there are actually N containers behind custom code
+- 🚨 **Single Point of Failure**: If the custom orchestration fails, all jobs stop
+- 🚨 **No Persistent Caching**: Every job starts from scratch in a fresh container
+- 🚨 **Docker Overhead**: Image pulling, layer management, and containerization slow down builds
+- 🚨 **Complex S3 Caching**: Requires complex cache management with lifecycle policies
 
-**Problems:**
-- ❌ Every job starts from scratch
-- ❌ No caching between jobs
-- ❌ Wasted time rebuilding derivations
-- ❌ Complicated caching strategies that don't work well
+### Our Solution: Direct Registration + Native NixOS
 
-### The Solution: Native Nix with Persistent Store
-
-This module runs Nix natively on NixOS instances with a persistent Nix store:
+This module uses **transparent direct registration** where each NixOS instance is an independent GitLab runner with a persistent Nix store:
 
 ```mermaid
 graph LR
-    A[Job Starts] --> B[Runner Available]
-    B --> C[Run Nix Build]
-    C --> D{Derivation in Store?}
-    D -->|Yes| E[Use Cached Build]
-    D -->|No| F[Build Once]
-    F --> G[Store in Nix Store]
-    E --> H[Job Complete Fast]
-    G --> H
-    H --> I[Store Persists]
-    I --> A
+    A[Job Starts] --> B[NixOS Runner]
+    B --> C{Derivation Cached?}
+    C -->|Yes| D[Use Cache - Fast!]
+    C -->|No| E[Build Once]
+    E --> F[Store in Nix Store]
+    D --> G[Job Complete]
+    F --> G
+    G --> H[Cache Persists]
 ```
 
-**Benefits:**
-- ✅ Derivations cached in the Nix store
-- ✅ Subsequent builds are significantly faster
-- ✅ No Docker overhead
-- ✅ Simple, elegant solution
-- ✅ Native NixOS environment
+**Key Advantages:**
 
-## 🎯 Features
+| Aspect | Docker-Machine Approach | Our Direct Registration |
+|--------|------------------------|------------------------|
+| **Architecture** | Single runner + custom orchestration | Multiple independent runners |
+| **Visibility** | GitLab sees 1 runner, reality is N containers | GitLab sees actual N runners |
+| **Failure Impact** | Custom code failure stops all jobs | Each runner is independent |
+| **Caching** | Complex S3 cache with lifecycle policies | Persistent Nix store |
+| **Build Speed** | Every job rebuilds from scratch | Incremental builds using cache |
+| **Overhead** | Docker layer management | Direct native execution |
+| **Maintenance** | Complex custom code to maintain | Minimal custom code |
 
-- **Native Nix Support**: Run Nix flakes without Docker
-- **Persistent Nix Store**: Build once, use many times
-- **Auto-scaling**: Intelligent scaling based on GitLab job queue
-- **High Availability**: Multi-AZ deployment
-- **Flexible Networking**: BYO VPC or create new
-- **Monitoring**: CloudWatch metrics and dashboards
-- **Security**: SSM access, encrypted volumes, IMDSv2
-- **Customizable**: Additional NixOS configuration blocks
+## 🎯 Key Features
 
-## 📋 Requirements
-
-- Terraform >= 1.3
-- AWS Provider >= 5.0
-- GitLab account with runner token
-- AWS account with appropriate permissions
-
-## 🚀 Quick Start
-
-### 1. Create a GitLab Runner
-
-In your GitLab project/group, create a new runner and get the authentication token:
-
-1. Go to **Settings → CI/CD → Runners**
-2. Click **New project runner** (or **New group runner**)
-3. Configure runner settings:
-   - Tags: `nixos`, `nix`, `shell`
-   - Run untagged jobs: Your choice
-4. Click **Create runner**
-5. **Copy the token** (starts with `glrt-`)
-
-### 2. Use the Module
-
-```hcl
-module "gitlab_runner" {
-  source = "github.com/your-org/terraform-aws-gitlab-runner-nixos"
-
-  # Required: Environment and GitLab configuration
-  environment          = "production"
-  gitlab_url           = "https://gitlab.com"  # or your GitLab instance
-  gitlab_runner_token  = "glrt-xxxxxxxxxxxxx"  # Token from step 1
-
-  # Optional: GitLab API for intelligent autoscaling
-  enable_gitlab_metrics = true
-  gitlab_token         = "glpat-xxxxxxxxxxxxx"  # Personal access token with read_api scope
-  gitlab_project_id    = 12345
-
-  # Capacity configuration
-  max_instances               = 10
-  min_idle_instances          = 1
-  concurrent_jobs_per_instance = 2
-
-  # Cost optimization
-  on_demand_percentage = 10  # 90% spot instances
-
-  # Tags for runners
-  gitlab_runner_tags = ["nixos", "nix", "arm64", "shell"]
-
-  tags = {
-    Team        = "platform"
-    CostCenter  = "engineering"
-  }
-}
-
-output "runner_info" {
-  value = {
-    autoscaling_group = module.gitlab_runner.autoscaling_group_name
-    vpc_id            = module.gitlab_runner.vpc_id
-    nat_instance_ip   = module.gitlab_runner.nat_instance_public_ip
-  }
-}
-```
-
-### 3. Deploy
-
-```bash
-terraform init
-terraform plan
-terraform apply
-```
-
-### 4. Test Your Runner
-
-Create a `.gitlab-ci.yml` in your repository:
-
-```yaml
-test:
-  tags:
-    - nixos
-  script:
-    - nix --version
-    - nix flake show
-    - nix build
-```
-
-## 📚 Usage Examples
-
-### Basic Setup
-
-```hcl
-module "gitlab_runner" {
-  source = "github.com/your-org/terraform-aws-gitlab-runner-nixos"
-
-  environment         = "dev"
-  gitlab_url          = "https://gitlab.com"
-  gitlab_runner_token = var.gitlab_runner_token
-
-  max_instances      = 5
-  min_idle_instances = 0
-}
-```
-
-### Production Setup
-
-```hcl
-module "gitlab_runner" {
-  source = "github.com/your-org/terraform-aws-gitlab-runner-nixos"
-
-  environment         = "production"
-  gitlab_url          = "https://gitlab.example.com"
-  gitlab_runner_token = var.gitlab_runner_token
-
-  # Intelligent autoscaling
-  enable_gitlab_metrics = true
-  gitlab_token         = var.gitlab_api_token
-  gitlab_project_id    = 12345
-
-  # Capacity
-  max_instances               = 20
-  min_idle_instances          = 2
-  concurrent_jobs_per_instance = 2
-
-  # Monitoring
-  enable_cloudwatch_monitoring = true
-  enable_ssm_access           = true
-}
-```
-
-### Using Existing VPC
-
-```hcl
-module "gitlab_runner" {
-  source = "github.com/your-org/terraform-aws-gitlab-runner-nixos"
-
-  environment         = "staging"
-  gitlab_url          = "https://gitlab.com"
-  gitlab_runner_token = var.gitlab_runner_token
-
-  # Use existing VPC
-  create_vpc = false
-  vpc_id     = "vpc-xxxxx"
-  subnet_ids = ["subnet-xxxxx", "subnet-yyyyy"]
-
-  max_instances = 10
-}
-```
+- **Native Nix Support**: Run Nix flakes directly on NixOS without Docker
+- **Persistent Nix Store**: Build once, use many times - significant speedups
+- **Intelligent Auto-scaling**: Lambda-based scaling monitors GitLab job queue
+- **Direct Runner Registration**: Each instance is an independent runner (no orchestration overhead)
+- **High Availability**: Multi-AZ deployment with spot instances
+- **Flexible Networking**: BYO VPC or auto-create with NAT instance/gateway
+- **Security**: SSM access, encrypted volumes, IMDSv2 enforced
+- **Customizable**: Add custom NixOS configuration blocks
 
 ## 🏗️ Architecture
 
@@ -275,7 +121,7 @@ graph TB
     class PrivateSubnets private
     class Lambda lambda
     class External external
-    
+
     %% Link styling - make connections more visible
     linkStyle 0 stroke:#7c3aed,stroke-width:3px
     linkStyle 1 stroke:#7c3aed,stroke-width:3px
@@ -296,23 +142,115 @@ graph TB
 3. **Job Execution**: Jobs run natively on NixOS with the shell executor
 4. **Nix Store**: Derivations are cached in the persistent Nix store
 5. **Auto-Scaling**: Lambda function monitors GitLab queue and scales ASG
-6. **Flexible Deployment**: Support for both spot and on-demand instances
 
-### Autoscaling Logic
-
-The module implements intelligent autoscaling inspired by GitLab's fleeting plugin:
+### Scaling Formula
 
 ```
-Desired Capacity = ceil(
-  pending_jobs / jobs_per_instance * scale_factor
-) + min_idle_instances
+Desired Capacity = ceil(pending_jobs / jobs_per_instance × scale_factor) + min_idle_instances
 
-Capped at:
-  - Maximum: max_instances
-  - Growth Rate: max_growth_rate per iteration
+Capped at: max_instances and max_growth_rate per check
 ```
 
-Scale-in occurs when utilization falls below `scale_in_threshold`.
+The Lambda function checks GitLab's API every 1-5 minutes (configurable) and adjusts capacity based on pending jobs.
+
+## 📋 Requirements
+
+- Terraform >= 1.3
+- AWS Provider >= 5.0
+- GitLab Provider >= 16.0
+- GitLab account with API access
+- AWS account with appropriate permissions
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- Terraform >= 1.3 installed
+- AWS CLI configured
+- **GitLab Personal Access Token** with `create_runner` and `read_api` scopes ([create one here](https://gitlab.com/-/user_settings/personal_access_tokens))
+- **GitLab Project ID** (find it on your project's main page)
+
+### Basic Usage
+
+Create a `main.tf` file:
+
+```hcl
+module "gitlab_runner" {
+  source = "github.com/your-org/terraform-aws-gitlab-runner-nixos"
+
+  # Required: Environment and GitLab configuration
+  environment          = "production"
+  gitlab_url           = "https://gitlab.com"  # or your GitLab instance
+  gitlab_token         = var.gitlab_token     # Personal access token
+  gitlab_project_id    = 12345  # Your GitLab project ID
+
+  # Optional: GitLab API for intelligent autoscaling
+  enable_gitlab_metrics = true
+
+  # Capacity configuration
+  max_instances               = 10
+  min_idle_instances          = 1
+  concurrent_jobs_per_instance = 2
+
+  # Tags for runners
+  gitlab_runner_tags = ["nixos", "nix", "arm64", "shell"]
+
+  # Additional tags
+  tags = {
+    Team        = "platform"
+    CostCenter  = "engineering"
+  }
+}
+
+output "runner_info" {
+  value = {
+    autoscaling_group = module.gitlab_runner.autoscaling_group_name
+    vpc_id            = module.gitlab_runner.vpc_id
+    nat_instance_ip   = module.gitlab_runner.nat_instance_public_ip
+  }
+}
+```
+
+### Deploy
+
+```bash
+terraform init
+terraform apply
+```
+
+### Verify
+
+Create a `.gitlab-ci.yml` in your repository:
+
+```yaml
+test:
+  tags:
+    - nixos
+  script:
+    - nix --version
+    - nix flake show
+    - nix build
+```
+
+## 📚 Common Configurations
+
+### Using Existing VPC
+
+```hcl
+module "gitlab_runner" {
+  source = "github.com/your-org/terraform-aws-gitlab-runner-nixos"
+
+  environment       = "production"
+  gitlab_token      = var.gitlab_token
+  gitlab_project_id = var.gitlab_project_id
+
+  # Use existing VPC
+  create_vpc = false
+  vpc_id     = "vpc-xxxxx"
+  subnet_ids = ["subnet-xxxxx", "subnet-yyyyy"]
+}
+```
+
 
 ## 📖 Module Documentation
 
@@ -329,7 +267,7 @@ Scale-in occurs when utilization falls below `scale_in_threshold`.
 | `min_idle_instances` | Minimum number of idle instances to keep warm | `number` | `0` | no |
 | `concurrent_jobs_per_instance` | Concurrent jobs per runner instance | `number` | `2` | no |
 | `instance_types` | List of EC2 instance types | `list(string)` | `["t4g.medium", ...]` | no |
-| `on_demand_percentage` | Percentage of on-demand vs spot instances | `number` | `10` | no |
+| `spot_allocation_strategy` | Spot instance allocation strategy | `string` | `"price-capacity-optimized"` | no |
 | `root_volume_size` | Root volume size in GB | `number` | `40` | no |
 | `gitlab_runner_volume_size` | Additional EBS volume size for GitLab Runner builds in GB | `number` | `100` | no |
 | `gitlab_runner_volume_type` | Type of the GitLab Runner volume (gp2, gp3, io1, io2) | `string` | `gp3` | no |
@@ -339,7 +277,6 @@ Scale-in occurs when utilization falls below `scale_in_threshold`.
 | `subnet_ids` | Existing subnet IDs (if create_vpc is false) | `list(string)` | `[]` | no |
 | `enable_nat_gateway` | Use NAT Gateway instead of NAT Instance | `bool` | `false` | no |
 | `enable_ssm_access` | Enable AWS Systems Manager access | `bool` | `true` | no |
-| `custom_nixos_config` | Custom NixOS configuration to override defaults | `string` | `""` | no |
 | `additional_nixos_configs` | List of additional NixOS configuration blocks to import | `list(string)` | `[]` | no |
 
 <details>
@@ -371,234 +308,81 @@ See the [outputs.tf](outputs.tf) file for complete documentation of all outputs.
 
 </details>
 
-## 🛠️ Advanced Configuration
-
 ### Custom NixOS Configuration
 
-You can provide custom NixOS configuration:
-
 ```hcl
 module "gitlab_runner" {
   source = "github.com/your-org/terraform-aws-gitlab-runner-nixos"
 
-  environment         = "production"
-  gitlab_runner_token = var.token
+  environment       = "production"
+  gitlab_token      = var.gitlab_token
+  gitlab_project_id = var.gitlab_project_id
 
-  custom_nixos_config = file("${path.module}/custom-runner-config.nix")
-}
-```
-
-### Additional NixOS Configuration Blocks
-
-You can also provide additional NixOS configuration blocks that will be imported into the base configuration:
-
-```hcl
-module "gitlab_runner" {
-  source = "github.com/your-org/terraform-aws-gitlab-runner-nixos"
-
-  environment         = "production"
-  gitlab_runner_token = var.token
-
+  # Add custom packages or configuration
   additional_nixos_configs = [
-    # Custom package configuration
-    "{ config, pkgs, ... }: { environment.systemPackages = with pkgs; [ vim ]; }",
-    # Custom service configuration
-    "{ config, pkgs, ... }: { services.nginx.enable = true; }",
-    # Custom user configuration
-    "{ config, pkgs, ... }: { users.users.myuser = { isNormalUser = true; }; }"
+    "{ config, pkgs, ... }: { environment.systemPackages = with pkgs; [ vim git ]; }"
   ]
 }
 ```
 
-This approach allows you to add specific configurations without overriding the entire base configuration, making it more modular and maintainable.
-
-### Autoscaling Parameters
-
-Fine-tune the autoscaling behavior:
+### Scaling Configuration
 
 ```hcl
 module "gitlab_runner" {
   source = "github.com/your-org/terraform-aws-gitlab-runner-nixos"
 
-  environment         = "production"
-  gitlab_runner_token = var.token
+  environment       = "production"
+  gitlab_token      = var.gitlab_token
+  gitlab_project_id = var.gitlab_project_id
 
-  # Scaling algorithm parameters
-  scale_factor       = 1.2   # Slightly over-provision
-  max_growth_rate    = 5     # Add max 5 instances per minute
-  scale_in_threshold = 0.3   # Scale in when < 30% utilized
-
-  # Lambda check frequency
-  lambda_check_interval = 1  # Check every minute
-}
-```
-
-### Security Hardening
-
-```hcl
-module "gitlab_runner" {
-  source = "github.com/your-org/terraform-aws-gitlab-runner-nixos"
-
-  environment         = "production"
-  gitlab_runner_token = var.token
-
-  # Disable SSM access
-  enable_ssm_access = false
-
-  # No SSH access to NAT instance
-  allowed_ssh_cidr_blocks = []
-
-  # Additional security groups
-  additional_security_group_ids = [
-    aws_security_group.additional.id
-  ]
+  max_instances      = 20
+  min_idle_instances = 2
+  scale_factor       = 1.2
 }
 ```
 
 ## 🔍 Monitoring
 
-### CloudWatch Metrics
-
-The module publishes the following metrics to CloudWatch:
-
-- **Namespace**: `GitLab/CI`
-  - `PendingJobs`: Number of pending jobs in queue
-  - `RunningJobs`: Number of currently running jobs
-  - `AvailableRunners`: Number of available runners
-
-- **Namespace**: `GitLab/Runner`
-  - `RunnerHealthy`: Health status of individual runners
-
-### CloudWatch Dashboard
-
-Access the CloudWatch dashboard:
+Check scaling status:
 
 ```bash
-terraform output cloudwatch_dashboard_url
+terraform output -raw scaling_status_command | bash
 ```
 
-### Checking Runner Status
+Connect to a runner instance:
 
 ```bash
-# Get ASG status
-terraform output -raw scaling_status_command | bash
-
-# Connect to runner via SSM
+# Get instance ID
 INSTANCE_ID=$(aws autoscaling describe-auto-scaling-groups \
   --auto-scaling-group-names $(terraform output -raw autoscaling_group_name) \
   --query 'AutoScalingGroups[0].Instances[0].InstanceId' \
   --output text)
 
+# Connect via SSM
 aws ssm start-session --target $INSTANCE_ID
-
-# Once connected, check runner status
-sudo systemctl status gitlab-runner
-sudo gitlab-runner verify
 ```
-
-### Lambda Logs
-
-```bash
-terraform output -raw lambda_logs_command | bash
-```
-
-## 💰 Cost Optimization
-
-### Cost Optimization Tips
-
-1. **Use spot instances**: Set `on_demand_percentage = 0-10%` (default)
-2. **NAT Instance over Gateway**: More cost-effective option available
-3. **Minimal idle instances**: Set `min_idle_instances = 0-1`
-4. **Right-size instances**: Start with `t4g.small` or `t4g.medium`
-5. **Enable intelligent scaling**: Use GitLab API metrics
-6. **Multi-region**: Deploy only where needed
 
 ## 🐛 Troubleshooting
 
-### Runners not registering
-
+**Runners not registering:**
 ```bash
-# Check runner logs
+# Check runner logs on instance
 aws ssm start-session --target <instance-id>
 sudo journalctl -u gitlab-runner -f
-
-# Verify token
-sudo cat /etc/gitlab-runner-authentication.env
-
-# Test GitLab connectivity
-curl -v https://gitlab.com
 ```
 
-### Autoscaling not working
-
+**Autoscaling not working:**
 ```bash
 # Check Lambda logs
-aws logs tail /aws/lambda/<function-name> --follow
-
-# Verify IAM permissions
-aws autoscaling describe-auto-scaling-groups \
-  --auto-scaling-group-names <asg-name>
-
-# Check GitLab API token
-curl -H "PRIVATE-TOKEN: $GITLAB_TOKEN" \
-  "https://gitlab.com/api/v4/projects/<project-id>/jobs?scope=pending"
+terraform output -raw lambda_logs_command | bash
 ```
 
-### Slow builds
-
+**Slow builds:**
 ```bash
-# Check Nix store size
-du -sh /nix/store
-
-# Verify cache is working
+# Verify Nix cache is working
 nix path-info --all | wc -l
-
-# Check system resources
-htop
-df -h
 ```
-
-### Connectivity issues
-
-```bash
-# From NAT instance, test routing
-ping 8.8.8.8
-traceroute gitlab.com
-
-# Check iptables
-sudo iptables -L -n -v
-sudo iptables -t nat -L -n -v
-
-# From runner, test Internet
-curl -v https://gitlab.com
-curl -v https://cache.nixos.org
-```
-
-## 🤝 Contributing
-
-Contributions are welcome! Please:
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
 
 ## 📄 License
 
 MIT License - see [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- Inspired by [cattle-ops/terraform-aws-gitlab-runner](https://github.com/cattle-ops/terraform-aws-gitlab-runner)
-- Built on the excellent NixOS project
-- Autoscaling logic inspired by GitLab's fleeting plugin
-
-## 📞 Support
-
-- **Issues**: [GitHub Issues](https://github.com/your-org/terraform-aws-gitlab-runner-nixos/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/your-org/terraform-aws-gitlab-runner-nixos/discussions)
-
----
-
-**Made with ❤️ for the Nix community**
