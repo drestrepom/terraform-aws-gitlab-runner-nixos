@@ -4,6 +4,21 @@ stages:
   - test
   - validate
 
+# Shell Script Linting
+shellcheck-lint:
+  stage: lint
+  tags:
+    - nixos
+    - arm64
+    - shell
+  script:
+    - echo "🔍 Running ShellCheck linting..."
+    - nix run .#shellcheck lint
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "develop"
+
 # Terraform Linting
 terraform-lint:
   stage: lint
