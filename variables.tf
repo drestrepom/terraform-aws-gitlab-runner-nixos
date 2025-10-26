@@ -113,6 +113,23 @@ variable "root_volume_type" {
   default     = "gp3"
 }
 
+variable "gitlab_runner_volume_size" {
+  description = "Size of the additional EBS volume for GitLab Runner builds in GB"
+  type        = number
+  default     = 100
+
+  validation {
+    condition     = var.gitlab_runner_volume_size >= 100
+    error_message = "GitLab Runner volume size must be at least 100 GB for builds and cache."
+  }
+}
+
+variable "gitlab_runner_volume_type" {
+  description = "Type of the GitLab Runner volume (gp2, gp3, io1, io2)"
+  type        = string
+  default     = "gp3"
+}
+
 # ============================================
 # AUTOSCALING CONFIGURATION
 # ============================================
@@ -342,6 +359,12 @@ variable "custom_nixos_config" {
   description = "Custom NixOS configuration to merge with the default runner configuration. Overrides default settings."
   type        = string
   default     = ""
+}
+
+variable "additional_nixos_configs" {
+  description = "List of additional NixOS configuration blocks to import. Each item should be a valid NixOS configuration block that can be imported."
+  type        = list(string)
+  default     = []
 }
 
 variable "lambda_timeout" {

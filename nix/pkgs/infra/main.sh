@@ -9,6 +9,26 @@ print_status() {
     echo "${message}"
 }
 
+# Function to ensure terraform is initialized
+ensure_terraform_init() {
+    print_status "Ensuring Terraform is initialized..."
+
+    # Check if .terraform directory exists
+    if [[ ! -d ".terraform" ]]; then
+        print_status "Running terraform init..."
+        if terraform init; then
+            print_status "SUCCESS: terraform init completed"
+        else
+            print_status "ERROR: terraform init failed"
+            return 1
+        fi
+    else
+        print_status "Terraform already initialized"
+    fi
+
+    return 0
+}
+
 # Function to run linting
 lint_terraform() {
     print_status "Running Terraform linting..."
@@ -19,37 +39,20 @@ lint_terraform() {
         return 0
     fi
 
-    # Run tflint
-    if command -v tflint >/dev/null 2>&1; then
-        print_status "Running tflint..."
-        if tflint --init; then
-            if tflint; then
-                print_status "SUCCESS: tflint passed"
-            else
-                print_status "ERROR: tflint found issues"
-                return 1
-            fi
-        else
-            print_status "ERROR: Failed to initialize tflint"
-            return 1
-        fi
-    else
-        print_status "WARNING: tflint not found, skipping..."
+    # Ensure terraform is initialized
+    if ! ensure_terraform_init; then
+        return 1
     fi
 
-    # Run terraform init if needed
-    if [[ ! -d ".terraform" ]]; then
-        print_status "Initializing Terraform providers..."
-        if ! terraform init -backend=false; then
-            print_status "ERROR: Failed to initialize Terraform"
-            return 1
-        fi
-        
-        # Fix permissions for providers (common issue in CI)
-        print_status "Fixing provider permissions..."
-        find .terraform/providers -type f -name "terraform-provider-*" -exec chmod +x {} \; 2>/dev/null || true
+    # Run tflint
+    print_status "Running tflint..."
+    if tflint; then
+        print_status "SUCCESS: tflint passed"
+    else
+        print_status "ERROR: tflint found issues"
+        return 1
     fi
-    
+
     # Run terraform validate
     print_status "Running terraform validate..."
     if terraform validate; then
@@ -99,14 +102,8 @@ case "${1:-check}" in
         check_all
     ;;
     "validate")
-        if [[ ! -d ".terraform" ]]; then
-            print_status "Initializing Terraform providers..."
-            terraform init -backend=false
-            print_status "Fixing provider permissions..."
-            find .terraform/providers -type f -name "terraform-provider-*" -exec chmod +x {} \; 2>/dev/null || true
-        fi
-        terraform validate
-        ;;
+        ensure_terraform_init && terraform validate
+    ;;
     "fmt")
         terraform fmt -recursive
     ;;
@@ -114,13 +111,13 @@ case "${1:-check}" in
         terraform init
     ;;
     "plan")
-        terraform plan
+        ensure_terraform_init && terraform plan
     ;;
     "apply")
-        terraform apply
+        ensure_terraform_init && terraform apply
     ;;
     "destroy")
-        terraform destroy
+        ensure_terraform_init && terraform destroy
     ;;
     "help"|"-h"|"--help")
         echo "GitLab Runner NixOS Infrastructure Management"

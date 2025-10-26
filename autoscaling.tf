@@ -1,9 +1,14 @@
 locals {
   # Load the NixOS configuration template
   nix_src_base = file("${path.module}/infra/nixos-runner-config.nix")
+  nix_src      = var.custom_nixos_config != "" ? var.custom_nixos_config : local.nix_src_base
+  # Generate additional imports from user-provided configs
+  additional_imports = length(var.additional_nixos_configs) > 0 ? [
+    for config in var.additional_nixos_configs : "(${config})"
+  ] : []
 
-  # Use custom config if provided, otherwise use base
-  nix_src = var.custom_nixos_config != "" ? var.custom_nixos_config : local.nix_src_base
+  # Generate the imports section
+  imports_section = join("\n    ", local.additional_imports)
 
   # Template replacements
   replacements = {
@@ -12,18 +17,19 @@ locals {
     "__HEALTH_CHECK_SCRIPT__"  = file("${path.module}/infra/health-check.sh")
     "__RUNNER_STATUS_SCRIPT__" = file("${path.module}/infra/runner-status.sh")
     "__CONCURRENT_JOBS__"      = tostring(var.concurrent_jobs_per_instance)
+    "__NIX_CONFIG_IMPORT__"    = local.imports_section
   }
 
   # Perform replacements in order
-  keys_order = ["__GITLAB_RUNNER_TOKEN__", "__GITLAB_URL__", "__HEALTH_CHECK_SCRIPT__", "__RUNNER_STATUS_SCRIPT__", "__CONCURRENT_JOBS__"]
+  keys_order = ["__GITLAB_RUNNER_TOKEN__", "__GITLAB_URL__", "__HEALTH_CHECK_SCRIPT__", "__RUNNER_STATUS_SCRIPT__", "__CONCURRENT_JOBS__", "__NIX_CONFIG_IMPORT__"]
 
-  step1 = replace(local.nix_src, local.keys_order[0], local.replacements[local.keys_order[0]])
-  step2 = replace(local.step1, local.keys_order[1], local.replacements[local.keys_order[1]])
-  step3 = replace(local.step2, local.keys_order[2], local.replacements[local.keys_order[2]])
-  step4 = replace(local.step3, local.keys_order[3], local.replacements[local.keys_order[3]])
-  step5 = replace(local.step4, local.keys_order[4], local.replacements[local.keys_order[4]])
-
-  user_data = base64encode(local.step5)
+  step1     = replace(local.nix_src, local.keys_order[0], local.replacements[local.keys_order[0]])
+  step2     = replace(local.step1, local.keys_order[1], local.replacements[local.keys_order[1]])
+  step3     = replace(local.step2, local.keys_order[2], local.replacements[local.keys_order[2]])
+  step4     = replace(local.step3, local.keys_order[3], local.replacements[local.keys_order[3]])
+  step5     = replace(local.step4, local.keys_order[4], local.replacements[local.keys_order[4]])
+  step6     = replace(local.step5, local.keys_order[5], local.replacements[local.keys_order[5]])
+  user_data = base64encode(local.step6)
 }
 resource "aws_launch_template" "nixos_runner" {
   name_prefix = "${var.environment}-nixos-runner-"
@@ -48,6 +54,20 @@ resource "aws_launch_template" "nixos_runner" {
       volume_type           = var.root_volume_type
       delete_on_termination = true
       encrypted             = true
+    }
+  }
+
+  # Additional EBS volume for GitLab Runner builds
+  dynamic "block_device_mappings" {
+    for_each = var.gitlab_runner_volume_size > 0 ? [1] : []
+    content {
+      device_name = "/dev/sdf"
+      ebs {
+        volume_size           = var.gitlab_runner_volume_size
+        volume_type           = var.gitlab_runner_volume_type
+        delete_on_termination = true
+        encrypted             = true
+      }
     }
   }
 

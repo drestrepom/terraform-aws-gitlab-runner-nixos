@@ -1,21 +1,15 @@
 { config, pkgs, lib, modulesPath, ... }:
 
 {
-  imports = [ "${modulesPath}/virtualisation/amazon-image.nix" ];
+  imports =
+    [ "${modulesPath}/virtualisation/amazon-image.nix" __NIX_CONFIG_IMPORT__ ];
 
-    # Ensure EC2 user-data gets processed on boot
+  # Ensure EC2 user-data gets processed on boot
   virtualisation.amazon-init.enable = true;
 
   boot.loader.efi.canTouchEfiVariables = false;
   # Enable automatic partitioning for EC2
   boot.initrd.systemd.enable = true;
-  nix.settings = {
-    experimental-features = [ "nix-command" "flakes" ];
-    substituters = [ "https://cache.nixos.org" ];
-    trusted-public-keys =
-      [ "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=" ];
-    trusted-users = [ "root" "ssm-user" ];
-  };
 
   environment.systemPackages = with pkgs; [
     git
@@ -28,6 +22,9 @@
     jq
     procps
     awscli2
+    cachix
+    e2fsprogs
+    util-linux
   ];
 
   users.users.nixos = {
@@ -38,6 +35,7 @@
 
   # AWS Systems Manager Agent
   services.amazon-ssm-agent = { enable = true; };
+
   security.sudo.extraRules = [{
     users = [ "ssm-user" ];
     commands = [{
@@ -53,7 +51,7 @@
     enable = true;
 
     settings = {
-      concurrent = __CONCURRENT_JOBS__;  # Injected by Terraform
+      concurrent = __CONCURRENT_JOBS__;
       check_interval = 10;
     };
 
@@ -61,9 +59,51 @@
       "nixos-shell-runner" = {
         authenticationTokenConfigFile = "/etc/gitlab-runner-authentication.env";
         executor = "shell";
+        buildsDir = "/var/lib/gitlab-runner-builds/builds";
       };
     };
+
     extraPackages = with pkgs; [ git curl wget ];
+  };
+
+  systemd.tmpfiles.rules =
+    [ "d /var/lib/gitlab-runner-builds 755 gitlab-runner gitlab-runner -" ];
+
+  # Setup GitLab Runner volume (format and mount)
+  systemd.services.setup-gitlab-volume = {
+    script = ''
+      # Wait for the volume to be available
+      while [ ! -b /dev/sdf ]; do
+        echo "Waiting for /dev/sdf to be available..."
+        sleep 2
+      done
+
+      # Check if the volume is already formatted
+      if ! ${pkgs.util-linux}/bin/blkid /dev/sdf >/dev/null 2>&1; then
+        echo "Formatting /dev/sdf as ext4..."
+        ${pkgs.e2fsprogs}/bin/mkfs.ext4 -L gitlab-runner /dev/sdf
+        echo "Volume formatted successfully"
+      else
+        echo "/dev/sdf is already formatted"
+      fi
+
+      # Mount the volume
+      mkdir -p /var/lib/gitlab-runner-builds
+      ${pkgs.util-linux}/bin/mount /dev/sdf /var/lib/gitlab-runner-builds
+      echo "Volume mounted successfully"
+
+      # Ensure builds directory has correct permissions
+      mkdir -p /var/lib/gitlab-runner-builds/builds
+      chown gitlab-runner:gitlab-runner /var/lib/gitlab-runner-builds/builds
+      chmod 755 /var/lib/gitlab-runner-builds/builds
+
+      echo "GitLab Runner volume setup completed"
+    '';
+    serviceConfig = {
+      Type = "oneshot";
+      User = "root";
+    };
+    wantedBy = [ "multi-user.target" ];
   };
 
   environment.etc."gitlab-runner-authentication.env" = {
@@ -125,7 +165,7 @@
   # Publish runner health to CloudWatch
   systemd.services.publish-runner-health = {
     script = ''
-    __HEALTH_CHECK_SCRIPT__
+      __HEALTH_CHECK_SCRIPT__
     '';
     serviceConfig = {
       Type = "oneshot";

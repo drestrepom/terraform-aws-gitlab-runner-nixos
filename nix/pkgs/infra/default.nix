@@ -1,16 +1,9 @@
 { inputs', pkgs }:
 pkgs.writeShellApplication {
-  name = "sifts-infra";
+  name = "infra";
   runtimeInputs = [
     pkgs.terraform
     pkgs.tflint
-    pkgs.terraform-docs
-    pkgs.tfsec
-    pkgs.checkov
-    pkgs.shellcheck
-    pkgs.awscli2
-    pkgs.jq
-    pkgs.curl
   ];
   text = ''
     # shellcheck disable=SC1091
