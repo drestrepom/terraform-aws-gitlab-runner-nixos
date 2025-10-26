@@ -66,44 +66,67 @@
     extraPackages = with pkgs; [ git curl wget ];
   };
 
-  systemd.tmpfiles.rules =
-    [ "d /var/lib/gitlab-runner-builds 755 gitlab-runner gitlab-runner -" ];
+  systemd.tmpfiles.rules = [
+    "d /var/lib/gitlab-runner-builds 755 gitlab-runner gitlab-runner -"
+    "d /var/lib/gitlab-runner-builds/builds 755 gitlab-runner gitlab-runner -"
+    "d /var/lib/gitlab-runner-builds/tmp 755 gitlab-runner gitlab-runner -"
+  ];
 
-  # Setup GitLab Runner volume (format and mount)
-  systemd.services.setup-gitlab-volume = {
+  # Configure GitLab Runner service with proper environment variables
+  systemd.services.gitlab-runner.serviceConfig = {
+    Environment = [ "HOME=/var/lib/gitlab-runner" ];
+    SupplementaryGroups = [ "nixbld" ];
+    RequiresMountsFor = [ "/var/lib/gitlab-runner-builds" ];
+  };
+
+  systemd.services.gitlab-runner-volume-setup = {
+    description = "Ensure GitLab Runner build volume directories";
+    after = [ "var-lib-gitlab\\x2drunner\\x2dbuilds.mount" ];
+    requires = [ "var-lib-gitlab\\x2drunner\\x2dbuilds.mount" ];
+    wantedBy = [ "multi-user.target" ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+    };
     script = ''
-      # Wait for the volume to be available
+      install -d -m 755 -o gitlab-runner -g gitlab-runner /var/lib/gitlab-runner-builds
+      install -d -m 755 -o gitlab-runner -g gitlab-runner /var/lib/gitlab-runner-builds/builds
+      install -d -m 755 -o gitlab-runner -g gitlab-runner /var/lib/gitlab-runner-builds/tmp
+    '';
+  };
+
+  # Ensure EBS volume is formatted once and mounted declaratively
+  systemd.services.format-gitlab-volume = {
+    description = "Format GitLab runner EBS volume";
+    wantedBy = [ "local-fs.target" ];
+    before = [ "var-lib-gitlab\\x2drunner\\x2dbuilds.mount" ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+    };
+    script = ''
+      set -euo pipefail
+
       while [ ! -b /dev/sdf ]; do
         echo "Waiting for /dev/sdf to be available..."
         sleep 2
       done
 
-      # Check if the volume is already formatted
-      if ! ${pkgs.util-linux}/bin/blkid /dev/sdf >/dev/null 2>&1; then
-        echo "Formatting /dev/sdf as ext4..."
-        ${pkgs.e2fsprogs}/bin/mkfs.ext4 -L gitlab-runner /dev/sdf
-        echo "Volume formatted successfully"
+      current_label=$(${pkgs.util-linux}/bin/blkid -s LABEL -o value /dev/sdf || true)
+      if [ "$current_label" != "gitlab-runner" ]; then
+        echo "Formatting /dev/sdf as ext4 with label gitlab-runner..."
+        ${pkgs.e2fsprogs}/bin/mkfs.ext4 -F -L gitlab-runner /dev/sdf
       else
-        echo "/dev/sdf is already formatted"
+        echo "EBS volume already formatted with correct label"
       fi
-
-      # Mount the volume
-      mkdir -p /var/lib/gitlab-runner-builds
-      ${pkgs.util-linux}/bin/mount /dev/sdf /var/lib/gitlab-runner-builds
-      echo "Volume mounted successfully"
-
-      # Ensure builds directory has correct permissions
-      mkdir -p /var/lib/gitlab-runner-builds/builds
-      chown gitlab-runner:gitlab-runner /var/lib/gitlab-runner-builds/builds
-      chmod 755 /var/lib/gitlab-runner-builds/builds
-
-      echo "GitLab Runner volume setup completed"
     '';
-    serviceConfig = {
-      Type = "oneshot";
-      User = "root";
-    };
-    wantedBy = [ "multi-user.target" ];
+  };
+
+  fileSystems."/var/lib/gitlab-runner-builds" = {
+    device = "/dev/disk/by-label/gitlab-runner";
+    fsType = "ext4";
+    options = [ "nofail" "x-systemd.device-timeout=2min" ];
+    neededForBoot = false;
   };
 
   environment.etc."gitlab-runner-authentication.env" = {
