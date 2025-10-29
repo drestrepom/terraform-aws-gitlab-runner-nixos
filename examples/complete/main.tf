@@ -2,9 +2,7 @@
 #
 # This example demonstrates a production-ready setup with:
 # - Intelligent autoscaling based on GitLab API
-# - Spot instances with multiple instance types
-# - CloudWatch monitoring
-# - SSM access for debugging
+# - 100% spot instances with multiple instance types for cost optimization
 
 terraform {
   required_version = ">= 1.3"
@@ -59,21 +57,29 @@ module "gitlab_runner" {
   instance_types   = var.instance_types
   root_volume_size = var.root_volume_size
 
+  # Note: gitlab_runner_volume_size and gitlab_runner_volume_type use module defaults
+
   # Spot instances
   spot_allocation_strategy = "price-capacity-optimized"
 
   # Networking
-  create_vpc         = true
-  enable_nat_gateway = false # Use NAT Instance
+  # Three internet access options:
+  # 1. "public_ip" - Each runner gets a public IP (simplest, but less secure)
+  # 2. "nat_instance" - Use a NAT instance (cost-effective, good for dev/test)
+  # 3. "nat_gateway" - Use AWS NAT Gateway (most reliable, recommended for production)
+  internet_access_type = var.internet_access_type
+  
+  # VPC configuration (only needed for NAT options)
+  create_vpc = var.internet_access_type != "public_ip"
+  vpc_cidr   = "10.0.0.0/16"
+  
+  # Deprecated: Use internet_access_type instead
+  enable_nat_gateway = var.internet_access_type == "nat_gateway"
 
   # Autoscaling configuration
   scale_factor       = 1.0
   max_growth_rate    = 10
   scale_in_threshold = 0.3
-
-  # Monitoring
-  enable_cloudwatch_monitoring = true
-  enable_ssm_access            = true
 
   # Tags
   tags = merge(
@@ -90,7 +96,8 @@ module "gitlab_runner" {
   }
 
   additional_nixos_configs = [
-    file("${path.module}/nix-config.nix")
+    file("${path.module}/nix-config.nix"),
+    file("${path.module}/cachix-config.nix")
   ]
 }
 
@@ -113,21 +120,6 @@ output "runner_security_group_id" {
 output "nat_instance_ip" {
   description = "Public IP of the NAT instance"
   value       = module.gitlab_runner.nat_instance_public_ip
-}
-
-output "ssm_connect_command" {
-  description = "Command to connect to a runner via SSM"
-  value       = module.gitlab_runner.ssm_connect_command
-}
-
-output "scaling_status_command" {
-  description = "Command to check scaling status"
-  value       = module.gitlab_runner.scaling_status_command
-}
-
-output "cloudwatch_dashboard_url" {
-  description = "URL to CloudWatch dashboard"
-  value       = module.gitlab_runner.cloudwatch_dashboard_url
 }
 
 output "runner_config" {

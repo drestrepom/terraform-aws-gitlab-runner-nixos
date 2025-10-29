@@ -47,6 +47,12 @@ resource "aws_launch_template" "nixos_runner" {
 
   user_data = local.user_data
 
+  # Enable public IP assignment for public_ip internet access type
+  network_interfaces {
+    associate_public_ip_address = local.internet_access_type == "public_ip"
+    security_groups             = concat([aws_security_group.nixos_instance.id], var.additional_security_group_ids)
+  }
+
   block_device_mappings {
     device_name = "/dev/xvda"
     ebs {

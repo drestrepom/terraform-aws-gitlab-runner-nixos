@@ -1,11 +1,29 @@
 # ============================================================================
 # VPC for GitLab Runners (conditionally created)
 # Runners with private IPs → NAT Instance/Gateway → Internet (GitLab)
+# OR Runners with public IPs → Internet Gateway → Internet (GitLab)
 # ============================================================================
+
+# Determine internet access type (backward compatibility)
+locals {
+  # Backward compatibility: if enable_nat_gateway is set, use it
+  internet_access_type = var.enable_nat_gateway != null ? (
+    var.enable_nat_gateway ? "nat_gateway" : "nat_instance"
+  ) : var.internet_access_type
+  
+  # Determine if we need VPC (only for NAT options)
+  need_vpc = local.internet_access_type != "public_ip"
+  
+  # Determine if we need NAT instance
+  need_nat_instance = local.internet_access_type == "nat_instance"
+  
+  # Determine if we need NAT gateway
+  need_nat_gateway = local.internet_access_type == "nat_gateway"
+}
 
 # VPC
 resource "aws_vpc" "main" {
-  count = var.create_vpc ? 1 : 0
+  count = var.create_vpc && local.need_vpc ? 1 : 0
 
   cidr_block           = var.vpc_cidr
   enable_dns_hostnames = true
@@ -21,7 +39,7 @@ resource "aws_vpc" "main" {
 
 # Internet Gateway (for NAT)
 resource "aws_internet_gateway" "main" {
-  count = var.create_vpc ? 1 : 0
+  count = var.create_vpc && local.need_vpc ? 1 : 0
 
   vpc_id = aws_vpc.main[0].id
 
@@ -38,7 +56,7 @@ resource "aws_internet_gateway" "main" {
 # ============================================================================
 
 resource "aws_subnet" "public" {
-  count = var.create_vpc ? 1 : 0
+  count = var.create_vpc && local.need_vpc ? 1 : 0
 
   vpc_id                  = aws_vpc.main[0].id
   cidr_block              = cidrsubnet(var.vpc_cidr, 8, 1)
@@ -54,7 +72,7 @@ resource "aws_subnet" "public" {
 }
 
 resource "aws_route_table" "public" {
-  count = var.create_vpc ? 1 : 0
+  count = var.create_vpc && local.need_vpc ? 1 : 0
 
   vpc_id = aws_vpc.main[0].id
 
@@ -72,7 +90,7 @@ resource "aws_route_table" "public" {
 }
 
 resource "aws_route_table_association" "public" {
-  count = var.create_vpc ? 1 : 0
+  count = var.create_vpc && local.need_vpc ? 1 : 0
 
   subnet_id      = aws_subnet.public[0].id
   route_table_id = aws_route_table.public[0].id
@@ -83,7 +101,7 @@ resource "aws_route_table_association" "public" {
 # ============================================================================
 
 resource "aws_subnet" "private" {
-  count = var.create_vpc ? length(local.availability_zones) : 0
+  count = var.create_vpc && local.need_vpc ? length(local.availability_zones) : 0
 
   vpc_id            = aws_vpc.main[0].id
   cidr_block        = cidrsubnet(var.vpc_cidr, 8, count.index + 10)
@@ -119,7 +137,7 @@ data "aws_ami" "nat_instance" {
 
 # Security Group for NAT Instance
 resource "aws_security_group" "nat_instance" {
-  count = var.create_vpc && !var.enable_nat_gateway ? 1 : 0
+  count = var.create_vpc && local.need_nat_instance ? 1 : 0
 
   name        = "${var.environment}-nat-instance-sg"
   description = "Security group for NAT Instance"
@@ -173,7 +191,7 @@ resource "aws_security_group" "nat_instance" {
 
 # NAT Instance
 resource "aws_instance" "nat" {
-  count = var.create_vpc && !var.enable_nat_gateway ? 1 : 0
+  count = var.create_vpc && local.need_nat_insgit adtance ? 1 : 0
 
   ami                         = data.aws_ami.nat_instance.id
   instance_type               = var.nat_instance_type
@@ -232,7 +250,7 @@ resource "aws_instance" "nat" {
 
 # NAT Gateway (alternative to NAT Instance)
 resource "aws_eip" "nat" {
-  count  = var.create_vpc && var.enable_nat_gateway ? 1 : 0
+  count  = var.create_vpc && local.need_nat_gateway ? 1 : 0
   domain = "vpc"
 
   tags = merge(
@@ -244,7 +262,7 @@ resource "aws_eip" "nat" {
 }
 
 resource "aws_nat_gateway" "main" {
-  count = var.create_vpc && var.enable_nat_gateway ? 1 : 0
+  count = var.create_vpc && local.need_nat_gateway ? 1 : 0
 
   allocation_id = aws_eip.nat[0].id
   subnet_id     = aws_subnet.public[0].id
@@ -261,13 +279,13 @@ resource "aws_nat_gateway" "main" {
 
 # Route table for runners (private → NAT)
 resource "aws_route_table" "private" {
-  count = var.create_vpc ? 1 : 0
+  count = var.create_vpc && local.need_vpc ? 1 : 0
 
   vpc_id = aws_vpc.main[0].id
 
   # Route to NAT Instance (if using NAT instance)
   dynamic "route" {
-    for_each = !var.enable_nat_gateway ? [1] : []
+    for_each = local.need_nat_instance ? [1] : []
     content {
       cidr_block           = "0.0.0.0/0"
       network_interface_id = aws_instance.nat[0].primary_network_interface_id
@@ -276,7 +294,7 @@ resource "aws_route_table" "private" {
 
   # Route to NAT Gateway (if using NAT gateway)
   dynamic "route" {
-    for_each = var.enable_nat_gateway ? [1] : []
+    for_each = local.need_nat_gateway ? [1] : []
     content {
       cidr_block     = "0.0.0.0/0"
       nat_gateway_id = aws_nat_gateway.main[0].id
@@ -292,7 +310,7 @@ resource "aws_route_table" "private" {
 }
 
 resource "aws_route_table_association" "private" {
-  count = var.create_vpc ? length(aws_subnet.private) : 0
+  count = var.create_vpc && local.need_vpc ? length(aws_subnet.private) : 0
 
   subnet_id      = aws_subnet.private[count.index].id
   route_table_id = aws_route_table.private[0].id

@@ -242,7 +242,7 @@ variable "lambda_check_interval" {
 # ============================================
 
 variable "create_vpc" {
-  description = "Whether to create a new VPC for the runners. Set to false if providing existing vpc_id and subnet_ids."
+  description = "Create a VPC for GitLab runners. If false, runners will be launched in the default VPC. Set to false when using public_ip internet access type."
   type        = bool
   default     = true
 }
@@ -253,10 +253,21 @@ variable "vpc_cidr" {
   default     = "10.0.0.0/16"
 }
 
+variable "internet_access_type" {
+  description = "Type of internet access for GitLab runners. Options: 'public_ip' (each instance gets public IP), 'nat_instance' (use NAT instance), 'nat_gateway' (use NAT Gateway)"
+  type        = string
+  default     = "nat_instance"
+  validation {
+    condition     = contains(["public_ip", "nat_instance", "nat_gateway"], var.internet_access_type)
+    error_message = "internet_access_type must be one of: public_ip, nat_instance, nat_gateway."
+  }
+}
+
+# Deprecated: Use internet_access_type instead
 variable "enable_nat_gateway" {
-  description = "Use AWS NAT Gateway instead of NAT instance"
+  description = "DEPRECATED: Use internet_access_type instead. Use AWS NAT Gateway instead of NAT instance"
   type        = bool
-  default     = false
+  default     = null
 }
 
 variable "nat_instance_type" {

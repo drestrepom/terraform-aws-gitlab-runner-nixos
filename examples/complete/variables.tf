@@ -38,6 +38,20 @@ variable "gitlab_project_id" {
 }
 
 # ============================================
+# Networking Configuration
+# ============================================
+
+variable "internet_access_type" {
+  description = "Type of internet access for GitLab runners. Options: 'public_ip' (each instance gets public IP), 'nat_instance' (use NAT instance), 'nat_gateway' (use NAT Gateway)"
+  type        = string
+  default     = "nat_instance"
+  validation {
+    condition     = contains(["public_ip", "nat_instance", "nat_gateway"], var.internet_access_type)
+    error_message = "internet_access_type must be one of: public_ip, nat_instance, nat_gateway."
+  }
+}
+
+# ============================================
 # Capacity Configuration
 # ============================================
 
@@ -56,7 +70,7 @@ variable "min_idle_instances" {
 variable "concurrent_jobs_per_instance" {
   description = "Number of concurrent jobs each runner can execute"
   type        = number
-  default     = 5
+  default     = 2
 }
 
 # ============================================

@@ -3,6 +3,30 @@
 # ============================================
 
 # ============================================
+# Internet Access Configuration
+# ============================================
+
+output "internet_access_type" {
+  value       = local.internet_access_type
+  description = "Type of internet access configured: public_ip, nat_instance, or nat_gateway"
+}
+
+output "vpc_created" {
+  value       = var.create_vpc && local.need_vpc
+  description = "Whether a VPC was created for the runners"
+}
+
+output "nat_instance_id" {
+  value       = local.need_nat_instance ? aws_instance.nat[0].id : null
+  description = "ID of the NAT instance (if using nat_instance internet access type)"
+}
+
+output "nat_gateway_id" {
+  value       = local.need_nat_gateway ? aws_nat_gateway.main[0].id : null
+  description = "ID of the NAT Gateway (if using nat_gateway internet access type)"
+}
+
+# ============================================
 # GitLab Runner
 # ============================================
 
